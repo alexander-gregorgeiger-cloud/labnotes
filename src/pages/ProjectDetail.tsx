@@ -3,9 +3,35 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { doc, collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, Plus, Download, Trash2, Edit3, Check, X } from 'lucide-react'
+import { ArrowLeft, Plus, Download, Trash2, Edit3, Check, X, Camera, Image } from 'lucide-react'
 import { exportProject } from '../export'
 import type { Project, Note } from '../db'
+
+function resizeImage(file: File, maxWidth = 800): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new window.Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let { width, height } = img
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width
+          width = maxWidth
+        }
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')!
+        ctx.drawImage(img, 0, 0, width, height)
+        resolve(canvas.toDataURL('image/jpeg', 0.7))
+      }
+      img.onerror = reject
+      img.src = e.target?.result as string
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
@@ -14,10 +40,14 @@ export default function ProjectDetail() {
   const [project, setProject] = useState<Project | null>(null)
   const [notes, setNotes] = useState<Note[]>([])
   const [noteText, setNoteText] = useState('')
+  const [pendingImage, setPendingImage] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
   const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!user || !id) return
@@ -47,6 +77,7 @@ export default function ProjectDetail() {
           id: d.id,
           projectId: id,
           content: data.content,
+          imageData: data.imageData || undefined,
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         }
@@ -83,17 +114,34 @@ export default function ProjectDetail() {
     )
   }
 
+  async function handleImageSelected(file: File) {
+    try {
+      setUploading(true)
+      const base64 = await resizeImage(file)
+      setPendingImage(base64)
+    } catch {
+      alert('Could not process image')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   async function addNote(e: React.FormEvent) {
     e.preventDefault()
-    if (!noteText.trim() || !id || !user) return
+    if ((!noteText.trim() && !pendingImage) || !id || !user) return
     const now = Timestamp.now()
-    await addDoc(collection(firestore, 'users', user.uid, 'projects', id, 'notes'), {
+    const noteData: Record<string, unknown> = {
       content: noteText.trim(),
       createdAt: now,
       updatedAt: now,
-    })
+    }
+    if (pendingImage) {
+      noteData.imageData = pendingImage
+    }
+    await addDoc(collection(firestore, 'users', user.uid, 'projects', id, 'notes'), noteData)
     await updateDoc(doc(firestore, 'users', user.uid, 'projects', id), { updatedAt: now })
     setNoteText('')
+    setPendingImage(null)
   }
 
   async function deleteNote(noteId: string) {
@@ -172,18 +220,77 @@ export default function ProjectDetail() {
               }
             }}
           />
-          {noteText.trim() && (
-            <div className="flex items-center justify-between px-4 pb-3">
-              <span className="text-xs text-slate-400">Cmd+Enter to save</span>
+
+          {/* Pending image preview */}
+          {pendingImage && (
+            <div className="px-4 pb-2 relative inline-block">
+              <img src={pendingImage} alt="Preview" className="max-h-40 rounded-lg border border-slate-200" />
               <button
-                type="submit"
-                className="flex items-center gap-1.5 bg-accent text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-accent-dark active:scale-95 transition-all"
+                type="button"
+                onClick={() => setPendingImage(null)}
+                className="absolute top-1 right-5 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs"
               >
-                <Plus className="w-4 h-4" />
-                Add Note
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           )}
+
+          <div className="flex items-center justify-between px-4 pb-3">
+            <div className="flex gap-1">
+              {/* Camera button */}
+              <button
+                type="button"
+                onClick={() => cameraInputRef.current?.click()}
+                className="p-2 text-slate-400 hover:text-accent hover:bg-orange-50 rounded-lg transition-colors"
+                title="Take photo"
+              >
+                <Camera className="w-5 h-5" />
+              </button>
+              {/* Gallery button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 text-slate-400 hover:text-accent hover:bg-orange-50 rounded-lg transition-colors"
+                title="Choose photo"
+              >
+                <Image className="w-5 h-5" />
+              </button>
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) handleImageSelected(file)
+                  e.target.value = ''
+                }}
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) handleImageSelected(file)
+                  e.target.value = ''
+                }}
+              />
+            </div>
+
+            {(noteText.trim() || pendingImage) && (
+              <button
+                type="submit"
+                disabled={uploading}
+                className="flex items-center gap-1.5 bg-accent text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-accent-dark active:scale-95 transition-all disabled:opacity-50"
+              >
+                <Plus className="w-4 h-4" />
+                {uploading ? 'Processing...' : 'Add Note'}
+              </button>
+            )}
+          </div>
         </div>
       </form>
 
@@ -222,7 +329,17 @@ export default function ProjectDetail() {
                 </div>
               ) : (
                 <>
-                  <p className="text-slate-800 whitespace-pre-wrap">{note.content}</p>
+                  {note.imageData && (
+                    <img
+                      src={note.imageData}
+                      alt="Note photo"
+                      className="w-full rounded-lg mb-3 cursor-pointer"
+                      onClick={() => window.open(note.imageData, '_blank')}
+                    />
+                  )}
+                  {note.content && (
+                    <p className="text-slate-800 whitespace-pre-wrap">{note.content}</p>
+                  )}
                   <div className="flex items-center justify-between mt-3">
                     <span className="text-xs text-slate-400">
                       {formatTimestamp(note.createdAt)}

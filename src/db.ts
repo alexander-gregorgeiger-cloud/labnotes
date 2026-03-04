@@ -12,6 +12,7 @@ export interface Note {
   id: string
   projectId: string
   content: string
+  imageData?: string
   createdAt: Date
   updatedAt: Date
 }
