@@ -12,6 +12,7 @@ export interface Note {
   id: string
   projectId: string
   content: string
+  imageUrl?: string
   createdAt: Date
   updatedAt: Date
 }
