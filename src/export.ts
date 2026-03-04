@@ -6,16 +6,17 @@ export async function exportProject(project: Project, notes: Note[]) {
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   )
 
-  let markdown = `# ${project.name}\n\n`
+  const line = '════════════════════════════════════════'
+  let text = `${project.name}\n${line}\n\n`
 
   if (project.description) {
-    markdown += `> ${project.description}\n\n`
+    text += `${project.description}\n\n`
   }
 
-  markdown += `**Created:** ${new Date(project.createdAt).toLocaleDateString()}\n`
-  markdown += `**Exported:** ${new Date().toLocaleDateString()}\n`
-  markdown += `**Total Notes:** ${notes.length}\n\n`
-  markdown += `---\n\n`
+  text += `Created:     ${new Date(project.createdAt).toLocaleDateString()}\n`
+  text += `Exported:    ${new Date().toLocaleDateString()}\n`
+  text += `Total Notes: ${notes.length}\n\n`
+  text += `${line}\n\n`
 
   for (const note of sortedNotes) {
     const date = new Date(note.createdAt)
@@ -26,13 +27,13 @@ export async function exportProject(project: Project, notes: Note[]) {
       hour: '2-digit',
       minute: '2-digit',
     })
-    markdown += `### ${timestamp}\n\n`
-    markdown += `${note.content}\n\n`
+    text += `[${timestamp}]\n`
+    text += `${note.content}\n\n`
   }
 
-  markdown += `---\n*Exported from LabNotes*\n`
+  text += `${line}\nExported from LabNotes\n`
 
-  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
-  const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, '_')}_labnotes.md`
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+  const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, '_')}_labnotes.txt`
   saveAs(blob, filename)
 }
