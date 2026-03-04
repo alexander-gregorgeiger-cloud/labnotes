@@ -3,6 +3,8 @@ import { useAuth } from './AuthContext'
 import Login from './pages/Login'
 import ProjectList from './pages/ProjectList'
 import ProjectDetail from './pages/ProjectDetail'
+import ExperimentList from './pages/ExperimentList'
+import ExperimentDetail from './pages/ExperimentDetail'
 
 export default function App() {
   const { user, loading } = useAuth()
@@ -23,6 +25,8 @@ export default function App() {
     <Routes>
       <Route path="/" element={<ProjectList />} />
       <Route path="/project/:id" element={<ProjectDetail />} />
+      <Route path="/experiments" element={<ExperimentList />} />
+      <Route path="/experiment/:id" element={<ExperimentDetail />} />
     </Routes>
   )
 }

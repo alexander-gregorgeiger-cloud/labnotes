@@ -9,7 +9,7 @@ import {
   BorderStyle,
   AlignmentType,
 } from 'docx'
-import type { Project, Note } from './db'
+import type { Project, Note, Experiment, Idea } from './db'
 
 function base64ToUint8Array(base64: string): Uint8Array {
   const data = base64.split(',')[1]
@@ -151,5 +151,119 @@ export async function exportProject(project: Project, notes: Note[]) {
 
   const blob = await Packer.toBlob(doc)
   const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, '_')}_labnotes.docx`
+  saveAs(blob, filename)
+}
+
+export async function exportExperiment(experiment: Experiment, ideas: Idea[]) {
+  const sortedIdeas = [...ideas].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  )
+
+  const children: Paragraph[] = []
+
+  children.push(
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      children: [new TextRun({ text: experiment.name, bold: true, size: 36, color: 'F39200' })],
+    })
+  )
+
+  if (experiment.description) {
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ text: experiment.description, italics: true, size: 24, color: '64748b' })],
+        spacing: { after: 100 },
+      })
+    )
+  }
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({ text: `Created: ${new Date(experiment.createdAt).toLocaleDateString()}   |   `, size: 20, color: '94a3b8' }),
+        new TextRun({ text: `Exported: ${new Date().toLocaleDateString()}   |   `, size: 20, color: '94a3b8' }),
+        new TextRun({ text: `${ideas.length} ideas`, size: 20, color: '94a3b8' }),
+      ],
+      spacing: { after: 200 },
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'F39200' } },
+      spacing: { after: 300 },
+    })
+  )
+
+  for (const idea of sortedIdeas) {
+    const date = new Date(idea.createdAt)
+    const timestamp = date.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ text: timestamp, size: 18, color: '312783', bold: true })],
+        spacing: { before: 200 },
+      })
+    )
+
+    if (idea.imageData) {
+      const imageBytes = base64ToUint8Array(idea.imageData)
+      const dims = await getImageDimensions(idea.imageData)
+      const maxWidth = 500
+      const scale = dims.width > maxWidth ? maxWidth / dims.width : 1
+      const width = Math.round(dims.width * scale)
+      const height = Math.round(dims.height * scale)
+
+      children.push(
+        new Paragraph({
+          children: [
+            new ImageRun({
+              data: imageBytes,
+              transformation: { width, height },
+              type: 'jpg',
+            }),
+          ],
+          spacing: { after: 100 },
+        })
+      )
+    }
+
+    if (idea.content) {
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: idea.content, size: 22 })],
+          spacing: { after: 100 },
+        })
+      )
+    }
+
+    children.push(
+      new Paragraph({
+        border: { bottom: { style: BorderStyle.SINGLE, size: 1, color: 'e2e8f0' } },
+        spacing: { after: 200 },
+      })
+    )
+  }
+
+  children.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: 'Exported from LabNotes — Experimental Planning', size: 18, color: '94a3b8', italics: true })],
+      spacing: { before: 300 },
+    })
+  )
+
+  const doc = new Document({
+    sections: [{ children }],
+  })
+
+  const blob = await Packer.toBlob(doc)
+  const filename = `${experiment.name.replace(/[^a-zA-Z0-9]/g, '_')}_experiment.docx`
   saveAs(blob, filename)
 }
