@@ -11,6 +11,7 @@ export default function ProjectList() {
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [error, setError] = useState('')
   const [projects, setProjects] = useState<(Project & { noteCount?: number })[] | null>(null)
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -36,6 +37,10 @@ export default function ProjectList() {
         })
       }
       setProjects(projectsData)
+    }, (err) => {
+      console.error('Firestore error:', err)
+      setError(err.message)
+      setProjects([])
     })
     return unsubscribe
   }, [user])
@@ -43,17 +48,24 @@ export default function ProjectList() {
   async function createProject(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim() || !user) return
-    const now = Timestamp.now()
-    const docRef = await addDoc(collection(firestore, 'users', user.uid, 'projects'), {
-      name: name.trim(),
-      description: description.trim(),
-      createdAt: now,
-      updatedAt: now,
-    })
-    setName('')
-    setDescription('')
-    setShowForm(false)
-    navigate(`/project/${docRef.id}`)
+    setError('')
+    try {
+      const now = Timestamp.now()
+      const docRef = await addDoc(collection(firestore, 'users', user.uid, 'projects'), {
+        name: name.trim(),
+        description: description.trim(),
+        createdAt: now,
+        updatedAt: now,
+      })
+      setName('')
+      setDescription('')
+      setShowForm(false)
+      navigate(`/project/${docRef.id}`)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to create project'
+      console.error('Create project error:', err)
+      setError(message)
+    }
   }
 
   async function deleteProject(e: React.MouseEvent, id: string) {
@@ -95,6 +107,13 @@ export default function ProjectList() {
           </button>
         </div>
       </div>
+
+      {/* Error Banner */}
+      {error && (
+        <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-xl mb-4 border border-red-200">
+          {error}
+        </div>
+      )}
 
       {/* New Project Form */}
       {showForm && (
