@@ -14,8 +14,8 @@ export default defineConfig({
         name: 'LabNotes',
         short_name: 'LabNotes',
         description: 'Digital lab notebook for managing experiments and notes',
-        theme_color: '#1e40af',
-        background_color: '#f8fafc',
+        theme_color: '#312783',
+        background_color: '#f7f6fb',
         display: 'standalone',
         start_url: '/',
         icons: [

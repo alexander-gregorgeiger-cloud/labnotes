@@ -94,7 +94,7 @@ export default function ProjectList() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowForm(!showForm)}
-            className="w-10 h-10 bg-primary text-white rounded-full flex items-center justify-center hover:bg-primary-dark active:scale-95 transition-all shadow-lg"
+            className="w-10 h-10 bg-accent text-white rounded-full flex items-center justify-center hover:bg-accent-dark active:scale-95 transition-all shadow-lg"
           >
             <Plus className="w-5 h-5" />
           </button>
@@ -116,8 +116,8 @@ export default function ProjectList() {
           rel="noopener noreferrer"
           className="flex items-center gap-3 bg-white rounded-2xl p-3 shadow-sm border border-slate-200 hover:border-primary-light hover:shadow-md transition-all"
         >
-          <div className="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center">
-            <Calculator className="w-5 h-5 text-emerald-600" />
+          <div className="w-9 h-9 bg-orange-100 rounded-xl flex items-center justify-center">
+            <Calculator className="w-5 h-5 text-accent" />
           </div>
           <div className="flex-1">
             <span className="font-medium text-slate-900 text-sm">Conjugation Calculator</span>
@@ -156,7 +156,7 @@ export default function ProjectList() {
           <div className="flex gap-2">
             <button
               type="submit"
-              className="flex-1 bg-primary text-white py-2 rounded-lg font-medium hover:bg-primary-dark active:scale-[0.98] transition-all"
+              className="flex-1 bg-accent text-white py-2 rounded-lg font-medium hover:bg-accent-dark active:scale-[0.98] transition-all"
             >
               Create Project
             </button>
@@ -181,7 +181,7 @@ export default function ProjectList() {
           <p className="text-slate-400 mb-6">Create your first experiment project</p>
           <button
             onClick={() => setShowForm(true)}
-            className="bg-primary text-white px-6 py-2.5 rounded-full font-medium hover:bg-primary-dark transition-colors"
+            className="bg-accent text-white px-6 py-2.5 rounded-full font-medium hover:bg-accent-dark transition-colors"
           >
             New Project
           </button>

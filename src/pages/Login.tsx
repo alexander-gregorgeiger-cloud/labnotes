@@ -79,7 +79,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-primary text-white py-2.5 rounded-lg font-medium hover:bg-primary-dark active:scale-[0.98] transition-all disabled:opacity-50"
+            className="w-full bg-accent text-white py-2.5 rounded-lg font-medium hover:bg-accent-dark active:scale-[0.98] transition-all disabled:opacity-50"
           >
             {loading ? 'Loading...' : isSignUp ? 'Create Account' : 'Sign In'}
           </button>

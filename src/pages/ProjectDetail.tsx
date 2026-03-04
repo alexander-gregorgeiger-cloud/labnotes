@@ -177,7 +177,7 @@ export default function ProjectDetail() {
               <span className="text-xs text-slate-400">Cmd+Enter to save</span>
               <button
                 type="submit"
-                className="flex items-center gap-1.5 bg-primary text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-primary-dark active:scale-95 transition-all"
+                className="flex items-center gap-1.5 bg-accent text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-accent-dark active:scale-95 transition-all"
               >
                 <Plus className="w-4 h-4" />
                 Add Note
@@ -208,7 +208,7 @@ export default function ProjectDetail() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => saveEdit(note.id)}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark transition-colors"
+                      className="flex items-center gap-1 px-3 py-1.5 bg-accent text-white rounded-lg text-sm hover:bg-accent-dark transition-colors"
                     >
                       <Check className="w-3.5 h-3.5" /> Save
                     </button>
