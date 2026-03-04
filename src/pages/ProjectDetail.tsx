@@ -1,25 +1,61 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type Note } from '../db'
+import { doc, collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore'
+import { firestore } from '../firebase'
+import { useAuth } from '../AuthContext'
 import { ArrowLeft, Plus, Download, Trash2, Edit3, Check, X } from 'lucide-react'
 import { exportProject } from '../export'
+import type { Project, Note } from '../db'
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const [project, setProject] = useState<Project | null>(null)
+  const [notes, setNotes] = useState<Note[]>([])
   const [noteText, setNoteText] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
+  const [loading, setLoading] = useState(true)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const project = useLiveQuery(() =>
-    id ? db.projects.get(id) : undefined
-  , [id])
+  useEffect(() => {
+    if (!user || !id) return
+    const projectRef = doc(firestore, 'users', user.uid, 'projects', id)
+    const unsubProject = onSnapshot(projectRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data()
+        setProject({
+          id: snap.id,
+          name: data.name,
+          description: data.description || '',
+          createdAt: data.createdAt?.toDate() || new Date(),
+          updatedAt: data.updatedAt?.toDate() || new Date(),
+        })
+      }
+      setLoading(false)
+    })
 
-  const notes = useLiveQuery(() =>
-    id ? db.notes.where('projectId').equals(id).reverse().sortBy('createdAt') : []
-  , [id])
+    const notesQuery = query(
+      collection(firestore, 'users', user.uid, 'projects', id, 'notes'),
+      orderBy('createdAt', 'desc')
+    )
+    const unsubNotes = onSnapshot(notesQuery, (snap) => {
+      const notesData: Note[] = snap.docs.map(d => {
+        const data = d.data()
+        return {
+          id: d.id,
+          projectId: id,
+          content: data.content,
+          createdAt: data.createdAt?.toDate() || new Date(),
+          updatedAt: data.updatedAt?.toDate() || new Date(),
+        }
+      })
+      setNotes(notesData)
+    })
+
+    return () => { unsubProject(); unsubNotes() }
+  }, [user, id])
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -27,6 +63,14 @@ export default function ProjectDetail() {
       textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px'
     }
   }, [noteText])
+
+  if (loading) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-6 text-center text-slate-400">
+        Loading...
+      </div>
+    )
+  }
 
   if (!project) {
     return (
@@ -41,30 +85,31 @@ export default function ProjectDetail() {
 
   async function addNote(e: React.FormEvent) {
     e.preventDefault()
-    if (!noteText.trim() || !id) return
-    const now = new Date()
-    const note: Note = {
-      id: crypto.randomUUID(),
-      projectId: id,
+    if (!noteText.trim() || !id || !user) return
+    const now = Timestamp.now()
+    await addDoc(collection(firestore, 'users', user.uid, 'projects', id, 'notes'), {
       content: noteText.trim(),
       createdAt: now,
       updatedAt: now,
-    }
-    await db.notes.add(note)
-    await db.projects.update(id, { updatedAt: now })
+    })
+    await updateDoc(doc(firestore, 'users', user.uid, 'projects', id), { updatedAt: now })
     setNoteText('')
   }
 
   async function deleteNote(noteId: string) {
-    if (!confirm('Delete this note?')) return
-    await db.notes.delete(noteId)
-    if (id) await db.projects.update(id, { updatedAt: new Date() })
+    if (!user || !id || !confirm('Delete this note?')) return
+    await deleteDoc(doc(firestore, 'users', user.uid, 'projects', id, 'notes', noteId))
+    await updateDoc(doc(firestore, 'users', user.uid, 'projects', id), { updatedAt: Timestamp.now() })
   }
 
   async function saveEdit(noteId: string) {
-    if (!editText.trim()) return
-    await db.notes.update(noteId, { content: editText.trim(), updatedAt: new Date() })
-    if (id) await db.projects.update(id, { updatedAt: new Date() })
+    if (!editText.trim() || !user || !id) return
+    const now = Timestamp.now()
+    await updateDoc(doc(firestore, 'users', user.uid, 'projects', id, 'notes', noteId), {
+      content: editText.trim(),
+      updatedAt: now,
+    })
+    await updateDoc(doc(firestore, 'users', user.uid, 'projects', id), { updatedAt: now })
     setEditingId(null)
     setEditText('')
   }
@@ -75,7 +120,7 @@ export default function ProjectDetail() {
   }
 
   async function handleExport() {
-    if (!project || !notes) return
+    if (!project) return
     await exportProject(project, notes)
   }
 
@@ -106,7 +151,7 @@ export default function ProjectDetail() {
           <p className="text-slate-500 mt-1">{project.description}</p>
         )}
         <p className="text-xs text-slate-400 mt-2">
-          Created {new Date(project.createdAt).toLocaleDateString()} &middot; {notes?.length ?? 0} notes
+          Created {new Date(project.createdAt).toLocaleDateString()} &middot; {notes.length} notes
         </p>
       </div>
 
@@ -143,7 +188,7 @@ export default function ProjectDetail() {
       </form>
 
       {/* Notes List */}
-      {!notes || notes.length === 0 ? (
+      {notes.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-slate-400">No notes yet. Start documenting your experiment!</p>
         </div>

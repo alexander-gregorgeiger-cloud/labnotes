@@ -1,51 +1,69 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type Project } from '../db'
-import { Plus, FlaskConical, Trash2, FolderOpen } from 'lucide-react'
+import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, getDocs, Timestamp } from 'firebase/firestore'
+import { signOut } from 'firebase/auth'
+import { firestore, auth } from '../firebase'
+import { useAuth } from '../AuthContext'
+import { Plus, FlaskConical, Trash2, FolderOpen, LogOut } from 'lucide-react'
+import type { Project } from '../db'
 
 export default function ProjectList() {
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [projects, setProjects] = useState<(Project & { noteCount?: number })[] | null>(null)
   const navigate = useNavigate()
+  const { user } = useAuth()
 
-  const projects = useLiveQuery(() =>
-    db.projects.orderBy('updatedAt').reverse().toArray()
-  )
-
-  const noteCounts = useLiveQuery(async () => {
-    if (!projects) return {}
-    const counts: Record<string, number> = {}
-    for (const p of projects) {
-      counts[p.id] = await db.notes.where('projectId').equals(p.id).count()
-    }
-    return counts
-  }, [projects])
+  useEffect(() => {
+    if (!user) return
+    const q = query(
+      collection(firestore, 'users', user.uid, 'projects'),
+      orderBy('updatedAt', 'desc')
+    )
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const projectsData: (Project & { noteCount?: number })[] = []
+      for (const docSnap of snapshot.docs) {
+        const data = docSnap.data()
+        const notesSnap = await getDocs(collection(firestore, 'users', user.uid, 'projects', docSnap.id, 'notes'))
+        projectsData.push({
+          id: docSnap.id,
+          name: data.name,
+          description: data.description || '',
+          createdAt: data.createdAt?.toDate() || new Date(),
+          updatedAt: data.updatedAt?.toDate() || new Date(),
+          noteCount: notesSnap.size,
+        })
+      }
+      setProjects(projectsData)
+    })
+    return unsubscribe
+  }, [user])
 
   async function createProject(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim()) return
-    const now = new Date()
-    const project: Project = {
-      id: crypto.randomUUID(),
+    if (!name.trim() || !user) return
+    const now = Timestamp.now()
+    const docRef = await addDoc(collection(firestore, 'users', user.uid, 'projects'), {
       name: name.trim(),
       description: description.trim(),
       createdAt: now,
       updatedAt: now,
-    }
-    await db.projects.add(project)
+    })
     setName('')
     setDescription('')
     setShowForm(false)
-    navigate(`/project/${project.id}`)
+    navigate(`/project/${docRef.id}`)
   }
 
   async function deleteProject(e: React.MouseEvent, id: string) {
     e.stopPropagation()
-    if (!confirm('Delete this project and all its notes?')) return
-    await db.notes.where('projectId').equals(id).delete()
-    await db.projects.delete(id)
+    if (!user || !confirm('Delete this project and all its notes?')) return
+    const notesSnap = await getDocs(collection(firestore, 'users', user.uid, 'projects', id, 'notes'))
+    for (const noteDoc of notesSnap.docs) {
+      await deleteDoc(noteDoc.ref)
+    }
+    await deleteDoc(doc(firestore, 'users', user.uid, 'projects', id))
   }
 
   return (
@@ -61,12 +79,21 @@ export default function ProjectList() {
             <p className="text-sm text-slate-500">Your digital lab notebook</p>
           </div>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="w-10 h-10 bg-primary text-white rounded-full flex items-center justify-center hover:bg-primary-dark active:scale-95 transition-all shadow-lg"
-        >
-          <Plus className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="w-10 h-10 bg-primary text-white rounded-full flex items-center justify-center hover:bg-primary-dark active:scale-95 transition-all shadow-lg"
+          >
+            <Plus className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => signOut(auth)}
+            className="w-10 h-10 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full flex items-center justify-center transition-colors"
+            title="Sign out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* New Project Form */}
@@ -136,7 +163,7 @@ export default function ProjectList() {
                     <p className="text-sm text-slate-500 mt-1 line-clamp-2">{project.description}</p>
                   )}
                   <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
-                    <span>{noteCounts?.[project.id] ?? 0} notes</span>
+                    <span>{project.noteCount ?? 0} notes</span>
                     <span>Updated {formatDate(project.updatedAt)}</span>
                   </div>
                 </div>
