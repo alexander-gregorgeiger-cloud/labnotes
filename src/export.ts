@@ -28,13 +28,7 @@ export async function exportProject(project: Project, notes: Note[]) {
       minute: '2-digit',
     })
     text += `[${timestamp}]\n`
-    if (note.imageUrl) {
-      text += `[Photo: ${note.imageUrl}]\n`
-    }
-    if (note.content) {
-      text += `${note.content}\n`
-    }
-    text += `\n`
+    text += `${note.content}\n\n`
   }
 
   text += `${line}\nExported from LabNotes\n`
