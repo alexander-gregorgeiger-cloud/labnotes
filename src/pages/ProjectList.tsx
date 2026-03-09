@@ -4,7 +4,7 @@ import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, getDocs
 import { signOut } from 'firebase/auth'
 import { firestore, auth } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { Plus, FlaskConical, Trash2, FolderOpen, LogOut, Calculator, ExternalLink, Lightbulb, ChevronRight } from 'lucide-react'
+import { Plus, FlaskConical, Trash2, FolderOpen, LogOut, Calculator, Lightbulb, ChevronRight } from 'lucide-react'
 import type { Project } from '../db'
 
 export default function ProjectList() {
@@ -123,21 +123,19 @@ export default function ProjectList() {
           </div>
           <ChevronRight className="w-4 h-4 text-slate-300" />
         </div>
-        <a
-          href="https://alexander-gregorgeiger-cloud.github.io/Conjugation-calculator/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 bg-white rounded-2xl p-3 shadow-sm border border-slate-200 hover:border-primary-light hover:shadow-md transition-all"
+        <div
+          onClick={() => navigate('/conjugation')}
+          className="flex items-center gap-3 bg-white rounded-2xl p-3 shadow-sm border border-slate-200 hover:border-primary-light hover:shadow-md transition-all cursor-pointer"
         >
           <div className="w-9 h-9 bg-orange-100 rounded-xl flex items-center justify-center">
             <Calculator className="w-5 h-5 text-accent" />
           </div>
           <div className="flex-1">
             <span className="font-medium text-slate-900 text-sm">Conjugation Calculator</span>
-            <p className="text-xs text-slate-400">Open lab tool</p>
+            <p className="text-xs text-slate-400">Plan reactions & save to projects</p>
           </div>
-          <ExternalLink className="w-4 h-4 text-slate-300" />
-        </a>
+          <ChevronRight className="w-4 h-4 text-slate-300" />
+        </div>
       </div>
 
       {/* Error Banner */}
