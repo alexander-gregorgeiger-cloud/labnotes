@@ -1,83 +1,142 @@
-import { useState, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, getDocs, Timestamp } from 'firebase/firestore'
+import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { Plus, StickyNote, Trash2, FolderOpen, ArrowLeft } from 'lucide-react'
+import { Plus, StickyNote, Trash2, Edit3, Check, X, Camera, Image, ArrowLeft } from 'lucide-react'
 import type { Memo } from '../db'
 
+function resizeImage(file: File, maxWidth = 800): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new window.Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let { width, height } = img
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width
+          width = maxWidth
+        }
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')!
+        ctx.drawImage(img, 0, 0, width, height)
+        resolve(canvas.toDataURL('image/jpeg', 0.7))
+      }
+      img.onerror = reject
+      img.src = e.target?.result as string
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function MemoList() {
-  const [showForm, setShowForm] = useState(false)
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [error, setError] = useState('')
-  const [memos, setMemos] = useState<(Memo & { entryCount?: number; doneCount?: number })[] | null>(null)
+  const [memos, setMemos] = useState<Memo[]>([])
+  const [memoText, setMemoText] = useState('')
+  const [pendingImage, setPendingImage] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editText, setEditText] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
   const navigate = useNavigate()
   const { user } = useAuth()
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!user) return
     const q = query(
       collection(firestore, 'users', user.uid, 'memos'),
-      orderBy('updatedAt', 'desc')
+      orderBy('createdAt', 'desc')
     )
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const data: (Memo & { entryCount?: number; doneCount?: number })[] = []
-      for (const docSnap of snapshot.docs) {
-        const d = docSnap.data()
-        const entriesSnap = await getDocs(collection(firestore, 'users', user.uid, 'memos', docSnap.id, 'entries'))
-        const doneCount = entriesSnap.docs.filter(e => e.data().done).length
-        data.push({
-          id: docSnap.id,
-          name: d.name,
-          description: d.description || '',
-          createdAt: d.createdAt?.toDate() || new Date(),
-          updatedAt: d.updatedAt?.toDate() || new Date(),
-          entryCount: entriesSnap.size,
-          doneCount,
-        })
-      }
-      setMemos(data)
-    }, (err) => {
-      console.error('Firestore error:', err)
-      setError(err.message)
-      setMemos([])
+    const unsub = onSnapshot(q, (snap) => {
+      setMemos(snap.docs.map(d => {
+        const data = d.data()
+        return {
+          id: d.id,
+          content: data.content || '',
+          imageData: data.imageData || undefined,
+          done: data.done || false,
+          createdAt: data.createdAt?.toDate() || new Date(),
+          updatedAt: data.updatedAt?.toDate() || new Date(),
+        }
+      }))
+      setLoading(false)
     })
-    return unsubscribe
+    return unsub
   }, [user])
 
-  async function createMemo(e: React.FormEvent) {
-    e.preventDefault()
-    if (!name.trim() || !user) return
-    setError('')
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px'
+    }
+  }, [memoText])
+
+  async function handleImageSelected(file: File) {
     try {
-      const now = Timestamp.now()
-      const docRef = await addDoc(collection(firestore, 'users', user.uid, 'memos'), {
-        name: name.trim(),
-        description: description.trim(),
-        createdAt: now,
-        updatedAt: now,
-      })
-      setName('')
-      setDescription('')
-      setShowForm(false)
-      navigate(`/memo/${docRef.id}`)
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to create memo'
-      console.error('Create memo error:', err)
-      setError(message)
+      setUploading(true)
+      const base64 = await resizeImage(file)
+      setPendingImage(base64)
+    } catch {
+      alert('Could not process image')
+    } finally {
+      setUploading(false)
     }
   }
 
-  async function deleteMemo(e: React.MouseEvent, id: string) {
-    e.stopPropagation()
-    if (!user || !confirm('Delete this memo and all its entries?')) return
-    const entriesSnap = await getDocs(collection(firestore, 'users', user.uid, 'memos', id, 'entries'))
-    for (const entryDoc of entriesSnap.docs) {
-      await deleteDoc(entryDoc.ref)
+  async function addMemo(e: React.FormEvent) {
+    e.preventDefault()
+    if ((!memoText.trim() && !pendingImage) || !user) return
+    const now = Timestamp.now()
+    const memoData: Record<string, unknown> = {
+      content: memoText.trim(),
+      done: false,
+      createdAt: now,
+      updatedAt: now,
     }
-    await deleteDoc(doc(firestore, 'users', user.uid, 'memos', id))
+    if (pendingImage) {
+      memoData.imageData = pendingImage
+    }
+    await addDoc(collection(firestore, 'users', user.uid, 'memos'), memoData)
+    setMemoText('')
+    setPendingImage(null)
   }
+
+  async function toggleDone(memo: Memo) {
+    if (!user) return
+    await updateDoc(doc(firestore, 'users', user.uid, 'memos', memo.id), {
+      done: !memo.done,
+    })
+  }
+
+  async function deleteMemo(memoId: string) {
+    if (!user || !confirm('Delete this memo?')) return
+    await deleteDoc(doc(firestore, 'users', user.uid, 'memos', memoId))
+  }
+
+  async function saveEdit(memoId: string) {
+    if (!editText.trim() || !user) return
+    const now = Timestamp.now()
+    await updateDoc(doc(firestore, 'users', user.uid, 'memos', memoId), {
+      content: editText.trim(),
+      updatedAt: now,
+    })
+    setEditingId(null)
+    setEditText('')
+  }
+
+  function startEdit(memo: Memo) {
+    setEditingId(memo.id)
+    setEditText(memo.content)
+  }
+
+  const doneCount = memos.filter(m => m.done).length
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
@@ -95,119 +154,266 @@ export default function MemoList() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Memos</h1>
-            <p className="text-sm text-slate-500">Quick notes & reminders</p>
+            <p className="text-sm text-slate-500">
+              {memos.length > 0 ? `${doneCount}/${memos.length} done` : 'Quick notes & reminders'}
+            </p>
           </div>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="w-10 h-10 bg-accent text-white rounded-full flex items-center justify-center hover:bg-accent-dark active:scale-95 transition-all shadow-lg"
-        >
-          <Plus className="w-5 h-5" />
-        </button>
       </div>
 
-      {/* Error Banner */}
-      {error && (
-        <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-xl mb-4 border border-red-200">
-          {error}
-        </div>
-      )}
-
-      {/* New Memo Form */}
-      {showForm && (
-        <form onSubmit={createMemo} className="bg-white rounded-2xl p-4 mb-4 shadow-sm border border-slate-200">
-          <h2 className="text-lg font-semibold mb-3">New Memo</h2>
-          <input
-            type="text"
-            placeholder="Memo title"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            autoFocus
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent text-base"
-          />
+      {/* Add Memo Form */}
+      <form onSubmit={addMemo} className="mb-6">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden focus-within:ring-2 focus-within:ring-accent focus-within:border-transparent">
           <textarea
-            placeholder="Topic / Description (optional)"
-            value={description}
-            onChange={e => setDescription(e.target.value)}
+            ref={textareaRef}
+            value={memoText}
+            onChange={e => setMemoText(e.target.value)}
+            placeholder="Add a memo..."
             rows={2}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent text-base resize-none"
+            className="w-full px-4 pt-3 pb-2 text-base resize-none focus:outline-none"
+            onKeyDown={e => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                addMemo(e)
+              }
+            }}
           />
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              className="flex-1 bg-accent text-white py-2 rounded-lg font-medium hover:bg-accent-dark active:scale-[0.98] transition-all"
-            >
-              Create Memo
-            </button>
-            <button
-              type="button"
-              onClick={() => { setShowForm(false); setName(''); setDescription('') }}
-              className="px-4 py-2 text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
-            >
-              Cancel
-            </button>
+
+          {/* Pending image preview */}
+          {pendingImage && (
+            <div className="px-4 pb-2 relative inline-block">
+              <img src={pendingImage} alt="Preview" className="max-h-40 rounded-lg border border-slate-200" />
+              <button
+                type="button"
+                onClick={() => setPendingImage(null)}
+                className="absolute top-1 right-5 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between px-4 pb-3">
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => cameraInputRef.current?.click()}
+                className="p-2 text-slate-400 hover:text-accent hover:bg-orange-50 rounded-lg transition-colors"
+                title="Take photo"
+              >
+                <Camera className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 text-slate-400 hover:text-accent hover:bg-orange-50 rounded-lg transition-colors"
+                title="Choose photo"
+              >
+                <Image className="w-5 h-5" />
+              </button>
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) handleImageSelected(file)
+                  e.target.value = ''
+                }}
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) handleImageSelected(file)
+                  e.target.value = ''
+                }}
+              />
+            </div>
+
+            {(memoText.trim() || pendingImage) && (
+              <button
+                type="submit"
+                disabled={uploading}
+                className="flex items-center gap-1.5 bg-accent text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-accent-dark active:scale-95 transition-all disabled:opacity-50"
+              >
+                <Plus className="w-4 h-4" />
+                {uploading ? 'Processing...' : 'Add'}
+              </button>
+            )}
           </div>
-        </form>
-      )}
+        </div>
+      </form>
 
       {/* Memos List */}
-      {!memos ? (
+      {loading ? (
         <div className="text-center py-12 text-slate-400">Loading...</div>
       ) : memos.length === 0 ? (
-        <div className="text-center py-20">
-          <FolderOpen className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-slate-400 mb-2">No memos yet</h2>
-          <p className="text-slate-400 mb-6">Create your first memo</p>
-          <button
-            onClick={() => setShowForm(true)}
-            className="bg-accent text-white px-6 py-2.5 rounded-full font-medium hover:bg-accent-dark transition-colors"
-          >
-            New Memo
-          </button>
+        <div className="text-center py-12">
+          <p className="text-slate-400">No memos yet. Add one above!</p>
         </div>
       ) : (
         <div className="space-y-3">
           {memos.map(memo => (
-            <div
-              key={memo.id}
-              onClick={() => navigate(`/memo/${memo.id}`)}
-              className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 hover:border-accent hover:shadow-md transition-all cursor-pointer active:scale-[0.99]"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-slate-900 truncate">{memo.name}</h3>
-                  {memo.description && (
-                    <p className="text-sm text-slate-500 mt-1 line-clamp-2">{memo.description}</p>
-                  )}
-                  <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
-                    <span>{memo.doneCount ?? 0}/{memo.entryCount ?? 0} done</span>
-                    <span>Updated {formatDate(memo.updatedAt)}</span>
+            <div key={memo.id} className={`bg-white rounded-2xl p-4 shadow-sm border border-slate-200 transition-opacity ${memo.done ? 'opacity-50' : ''}`}>
+              {editingId === memo.id ? (
+                <div>
+                  <textarea
+                    value={editText}
+                    onChange={e => setEditText(e.target.value)}
+                    autoFocus
+                    rows={3}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-accent text-base resize-none"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => saveEdit(memo.id)}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-accent text-white rounded-lg text-sm hover:bg-accent-dark transition-colors"
+                    >
+                      <Check className="w-3.5 h-3.5" /> Save
+                    </button>
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="flex items-center gap-1 px-3 py-1.5 text-slate-600 bg-slate-100 rounded-lg text-sm hover:bg-slate-200 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" /> Cancel
+                    </button>
                   </div>
                 </div>
-                <button
-                  onClick={e => deleteMemo(e, memo.id)}
-                  className="ml-3 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
+              ) : (
+                <div className="flex gap-3">
+                  {/* Checkbox */}
+                  <button
+                    onClick={() => toggleDone(memo)}
+                    className={`mt-0.5 flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
+                      memo.done
+                        ? 'bg-accent border-accent text-white'
+                        : 'border-slate-300 hover:border-accent'
+                    }`}
+                  >
+                    {memo.done && <Check className="w-3.5 h-3.5" />}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    {memo.imageData && (
+                      <div
+                        className="w-full mb-3 rounded-lg overflow-hidden border border-slate-100 relative"
+                        role="button"
+                        tabIndex={0}
+                        onPointerUp={() => setLightboxImage(memo.imageData!)}
+                      >
+                        <img
+                          src={memo.imageData}
+                          alt="Memo photo"
+                          className="w-full rounded-lg"
+                          draggable={false}
+                        />
+                        <div className="absolute bottom-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
+                          Tap to zoom
+                        </div>
+                      </div>
+                    )}
+                    {memo.content && (
+                      <p className={`whitespace-pre-wrap ${memo.done ? 'line-through text-slate-400' : 'text-slate-800'}`}>{memo.content}</p>
+                    )}
+                    <div className="flex items-center justify-between mt-3">
+                      <span className="text-xs text-slate-400">
+                        {formatTimestamp(memo.createdAt)}
+                      </span>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => startEdit(memo)}
+                          className="p-1.5 text-slate-300 hover:text-primary hover:bg-blue-50 rounded-lg transition-colors"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => deleteMemo(memo.id)}
+                          className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
+      )}
+
+      {/* Fullscreen Image Lightbox */}
+      {lightboxImage && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 99999,
+            backgroundColor: '#000',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 12, flexShrink: 0 }}>
+            <button
+              type="button"
+              onPointerUp={() => setLightboxImage(null)}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: '50%',
+                backgroundColor: 'rgba(255,255,255,0.2)',
+                color: '#fff',
+                border: 'none',
+                fontSize: 24,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              ✕
+            </button>
+          </div>
+          <div
+            style={{
+              flex: 1,
+              overflow: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 16,
+            }}
+          >
+            <img
+              src={lightboxImage}
+              alt="Full size"
+              style={{ maxWidth: '100%', touchAction: 'pinch-zoom' }}
+            />
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   )
 }
 
-function formatDate(date: Date): string {
-  const now = new Date()
-  const diff = now.getTime() - new Date(date).getTime()
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  if (days < 7) return `${days}d ago`
-  return new Date(date).toLocaleDateString()
+function formatTimestamp(date: Date): string {
+  const d = new Date(date)
+  return d.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }

@@ -36,15 +36,6 @@ export interface Idea {
 
 export interface Memo {
   id: string
-  name: string
-  description: string
-  createdAt: Date
-  updatedAt: Date
-}
-
-export interface MemoEntry {
-  id: string
-  memoId: string
   content: string
   imageData?: string
   done?: boolean
