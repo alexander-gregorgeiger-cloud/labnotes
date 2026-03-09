@@ -47,6 +47,7 @@ export interface MemoEntry {
   memoId: string
   content: string
   imageData?: string
+  done?: boolean
   createdAt: Date
   updatedAt: Date
 }

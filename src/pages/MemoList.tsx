@@ -11,7 +11,7 @@ export default function MemoList() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [error, setError] = useState('')
-  const [memos, setMemos] = useState<(Memo & { entryCount?: number })[] | null>(null)
+  const [memos, setMemos] = useState<(Memo & { entryCount?: number; doneCount?: number })[] | null>(null)
   const navigate = useNavigate()
   const { user } = useAuth()
 
@@ -22,10 +22,11 @@ export default function MemoList() {
       orderBy('updatedAt', 'desc')
     )
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const data: (Memo & { entryCount?: number })[] = []
+      const data: (Memo & { entryCount?: number; doneCount?: number })[] = []
       for (const docSnap of snapshot.docs) {
         const d = docSnap.data()
         const entriesSnap = await getDocs(collection(firestore, 'users', user.uid, 'memos', docSnap.id, 'entries'))
+        const doneCount = entriesSnap.docs.filter(e => e.data().done).length
         data.push({
           id: docSnap.id,
           name: d.name,
@@ -33,6 +34,7 @@ export default function MemoList() {
           createdAt: d.createdAt?.toDate() || new Date(),
           updatedAt: d.updatedAt?.toDate() || new Date(),
           entryCount: entriesSnap.size,
+          doneCount,
         })
       }
       setMemos(data)
@@ -178,7 +180,7 @@ export default function MemoList() {
                     <p className="text-sm text-slate-500 mt-1 line-clamp-2">{memo.description}</p>
                   )}
                   <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
-                    <span>{memo.entryCount ?? 0} entries</span>
+                    <span>{memo.doneCount ?? 0}/{memo.entryCount ?? 0} done</span>
                     <span>Updated {formatDate(memo.updatedAt)}</span>
                   </div>
                 </div>

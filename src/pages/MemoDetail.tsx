@@ -79,6 +79,7 @@ export default function MemoDetail() {
           memoId: id,
           content: data.content,
           imageData: data.imageData || undefined,
+          done: data.done || false,
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         }
@@ -151,6 +152,13 @@ export default function MemoDetail() {
     await updateDoc(doc(firestore, 'users', user.uid, 'memos', id), { updatedAt: Timestamp.now() })
   }
 
+  async function toggleDone(entry: MemoEntry) {
+    if (!user || !id) return
+    await updateDoc(doc(firestore, 'users', user.uid, 'memos', id, 'entries', entry.id), {
+      done: !entry.done,
+    })
+  }
+
   async function saveEdit(entryId: string) {
     if (!editText.trim() || !user || !id) return
     const now = Timestamp.now()
@@ -188,7 +196,7 @@ export default function MemoDetail() {
           <p className="text-slate-500 mt-1">{memo.description}</p>
         )}
         <p className="text-xs text-slate-400 mt-2">
-          Created {new Date(memo.createdAt).toLocaleDateString()} &middot; {entries.length} entries
+          Created {new Date(memo.createdAt).toLocaleDateString()} &middot; {entries.filter(e => e.done).length}/{entries.length} done
         </p>
       </div>
 
@@ -289,7 +297,7 @@ export default function MemoDetail() {
       ) : (
         <div className="space-y-3">
           {entries.map(entry => (
-            <div key={entry.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+            <div key={entry.id} className={`bg-white rounded-2xl p-4 shadow-sm border border-slate-200 transition-opacity ${entry.done ? 'opacity-50' : ''}`}>
               {editingId === entry.id ? (
                 <div>
                   <textarea
@@ -315,49 +323,62 @@ export default function MemoDetail() {
                   </div>
                 </div>
               ) : (
-                <>
-                  {entry.imageData && (
-                    <div
-                      className="w-full mb-3 rounded-lg overflow-hidden border border-slate-100 relative"
-                      role="button"
-                      tabIndex={0}
-                      onPointerUp={() => setLightboxImage(entry.imageData!)}
-                    >
-                      <img
-                        src={entry.imageData}
-                        alt="Memo photo"
-                        className="w-full rounded-lg"
-                        draggable={false}
-                      />
-                      <div className="absolute bottom-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
-                        Tap to zoom
+                <div className="flex gap-3">
+                  {/* Checkbox */}
+                  <button
+                    onClick={() => toggleDone(entry)}
+                    className={`mt-0.5 flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
+                      entry.done
+                        ? 'bg-teal-500 border-teal-500 text-white'
+                        : 'border-slate-300 hover:border-teal-400'
+                    }`}
+                  >
+                    {entry.done && <Check className="w-3.5 h-3.5" />}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    {entry.imageData && (
+                      <div
+                        className="w-full mb-3 rounded-lg overflow-hidden border border-slate-100 relative"
+                        role="button"
+                        tabIndex={0}
+                        onPointerUp={() => setLightboxImage(entry.imageData!)}
+                      >
+                        <img
+                          src={entry.imageData}
+                          alt="Memo photo"
+                          className="w-full rounded-lg"
+                          draggable={false}
+                        />
+                        <div className="absolute bottom-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
+                          Tap to zoom
+                        </div>
+                      </div>
+                    )}
+                    {entry.content && (
+                      <p className={`whitespace-pre-wrap ${entry.done ? 'line-through text-slate-400' : 'text-slate-800'}`}>{entry.content}</p>
+                    )}
+                    <div className="flex items-center justify-between mt-3">
+                      <span className="text-xs text-slate-400">
+                        {formatTimestamp(entry.createdAt)}
+                        {entry.updatedAt > entry.createdAt && ' (edited)'}
+                      </span>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => startEdit(entry)}
+                          className="p-1.5 text-slate-300 hover:text-primary hover:bg-blue-50 rounded-lg transition-colors"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => deleteEntry(entry.id)}
+                          className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
-                  )}
-                  {entry.content && (
-                    <p className="text-slate-800 whitespace-pre-wrap">{entry.content}</p>
-                  )}
-                  <div className="flex items-center justify-between mt-3">
-                    <span className="text-xs text-slate-400">
-                      {formatTimestamp(entry.createdAt)}
-                      {entry.updatedAt > entry.createdAt && ' (edited)'}
-                    </span>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => startEdit(entry)}
-                        className="p-1.5 text-slate-300 hover:text-primary hover:bg-blue-50 rounded-lg transition-colors"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => deleteEntry(entry.id)}
-                        className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
                   </div>
-                </>
+                </div>
               )}
             </div>
           ))}
