@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, Plus, Trash2, Copy, Save, Download } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Copy, Save, Download, FlaskConical, Droplets } from 'lucide-react'
 import type { Project } from '../db'
 
 interface Construct {
@@ -45,6 +45,23 @@ export default function ConjugationCalculator() {
   const [selectedProjectId, setSelectedProjectId] = useState(searchParams.get('projectId') || '')
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [activeTab, setActiveTab] = useState<'conjugation' | 'tools'>('conjugation')
+
+  // Mass → Concentration tool
+  const [massMass, setMassMass] = useState('')
+  const [massMW, setMassMW] = useState('')
+  const [massVol, setMassVol] = useState('')
+
+  // A280 → Concentration tool
+  const [a280Abs, setA280Abs] = useState('')
+  const [a280Ext, setA280Ext] = useState('')
+  const [a280Path, setA280Path] = useState('1')
+  const [a280MW, setA280MW] = useState('')
+
+  // Dilution tool (C1V1 = C2V2)
+  const [dilC1, setDilC1] = useState('')
+  const [dilC2, setDilC2] = useState('')
+  const [dilV2, setDilV2] = useState('')
 
   // Load projects for "Save to Project" picker
   useEffect(() => {
@@ -210,6 +227,258 @@ export default function ConjugationCalculator() {
       <h1 className="text-2xl font-bold text-slate-900 mb-1">Conjugation Calculator</h1>
       <p className="text-sm text-slate-500 mb-4">Plan conjugation reactions and save results to your projects</p>
 
+      {/* Tab Bar */}
+      <div className="flex mb-4 bg-slate-100 rounded-xl p-1">
+        <button
+          onClick={() => setActiveTab('conjugation')}
+          className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+            activeTab === 'conjugation'
+              ? 'bg-white text-primary shadow-sm'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <FlaskConical className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
+          Conjugation
+        </button>
+        <button
+          onClick={() => setActiveTab('tools')}
+          className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+            activeTab === 'tools'
+              ? 'bg-white text-primary shadow-sm'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Droplets className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
+          Tools
+        </button>
+      </div>
+
+      {/* Tools Tab */}
+      {activeTab === 'tools' && (
+        <div className="space-y-4">
+          {/* Mass → Concentration */}
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+            <h2 className="text-xs font-bold text-primary uppercase tracking-wide mb-3">Mass → Concentration</h2>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div>
+                <label className="text-xs text-slate-400">Mass (µg)</label>
+                <input
+                  type="number"
+                  value={massMass}
+                  onChange={e => setMassMass(e.target.value)}
+                  placeholder="µg"
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">MW (kDa)</label>
+                <input
+                  type="number"
+                  value={massMW}
+                  onChange={e => setMassMW(e.target.value)}
+                  placeholder="kDa"
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Volume (µL)</label>
+                <input
+                  type="number"
+                  value={massVol}
+                  onChange={e => setMassVol(e.target.value)}
+                  placeholder="µL"
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+              </div>
+            </div>
+            {(() => {
+              const mass = parseFloat(massMass) || 0
+              const mw = parseFloat(massMW) || 0
+              const vol = parseFloat(massVol) || 0
+              if (mass > 0 && mw > 0 && vol > 0) {
+                const molNmol = (mass / (mw * 1000)) * 1e3 // nmol
+                const concUM = molNmol / vol * 1e3 // µM (nmol / µL * 1000 = µM)
+                const concMgMl = mass / vol // µg/µL = mg/mL
+                return (
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <div className="grid grid-cols-3 gap-1 text-center">
+                      <div>
+                        <div className="text-xs text-slate-400">Moles</div>
+                        <div className="text-sm font-semibold text-primary">{molNmol.toFixed(2)}</div>
+                        <div className="text-[10px] text-slate-400">nmol</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-slate-400">Conc.</div>
+                        <div className="text-sm font-semibold text-accent">{concUM.toFixed(2)}</div>
+                        <div className="text-[10px] text-slate-400">µM</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-slate-400">Conc.</div>
+                        <div className="text-sm font-semibold text-accent">{concMgMl.toFixed(2)}</div>
+                        <div className="text-[10px] text-slate-400">mg/mL</div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
+              return null
+            })()}
+          </div>
+
+          {/* A280 → Concentration */}
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+            <h2 className="text-xs font-bold text-primary uppercase tracking-wide mb-3">A280 → Concentration</h2>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div>
+                <label className="text-xs text-slate-400">Absorbance (A280)</label>
+                <input
+                  type="number"
+                  value={a280Abs}
+                  onChange={e => setA280Abs(e.target.value)}
+                  placeholder="A280"
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                  step="0.001"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">ε (M⁻¹cm⁻¹)</label>
+                <input
+                  type="number"
+                  value={a280Ext}
+                  onChange={e => setA280Ext(e.target.value)}
+                  placeholder="Ext. coeff."
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Path length (cm)</label>
+                <input
+                  type="number"
+                  value={a280Path}
+                  onChange={e => setA280Path(e.target.value)}
+                  placeholder="1"
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                  step="0.1"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">MW (kDa)</label>
+                <input
+                  type="number"
+                  value={a280MW}
+                  onChange={e => setA280MW(e.target.value)}
+                  placeholder="kDa"
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+              </div>
+            </div>
+            {(() => {
+              const abs = parseFloat(a280Abs) || 0
+              const ext = parseFloat(a280Ext) || 0
+              const path = parseFloat(a280Path) || 1
+              const mw = parseFloat(a280MW) || 0
+              if (abs > 0 && ext > 0) {
+                // Beer-Lambert: A = ε * c * l → c = A / (ε * l) in M
+                const concM = abs / (ext * path) // M
+                const concUM = concM * 1e6 // µM
+                const concMgMl = mw > 0 ? concM * mw * 1000 : 0 // M * kDa * 1000 = M * g/mol = g/L = mg/mL
+                return (
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <div className={`grid ${mw > 0 ? 'grid-cols-2' : 'grid-cols-1'} gap-1 text-center`}>
+                      <div>
+                        <div className="text-xs text-slate-400">Conc.</div>
+                        <div className="text-sm font-semibold text-accent">{concUM.toFixed(2)}</div>
+                        <div className="text-[10px] text-slate-400">µM</div>
+                      </div>
+                      {mw > 0 && (
+                        <div>
+                          <div className="text-xs text-slate-400">Conc.</div>
+                          <div className="text-sm font-semibold text-accent">{concMgMl.toFixed(2)}</div>
+                          <div className="text-[10px] text-slate-400">mg/mL</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              }
+              return null
+            })()}
+          </div>
+
+          {/* Dilution Calculator (C1V1 = C2V2) */}
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+            <h2 className="text-xs font-bold text-primary uppercase tracking-wide mb-3">Dilution (C₁V₁ = C₂V₂)</h2>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div>
+                <label className="text-xs text-slate-400">C₁ initial (µM)</label>
+                <input
+                  type="number"
+                  value={dilC1}
+                  onChange={e => setDilC1(e.target.value)}
+                  placeholder="µM"
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">C₂ target (µM)</label>
+                <input
+                  type="number"
+                  value={dilC2}
+                  onChange={e => setDilC2(e.target.value)}
+                  placeholder="µM"
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">V₂ final (µL)</label>
+                <input
+                  type="number"
+                  value={dilV2}
+                  onChange={e => setDilV2(e.target.value)}
+                  placeholder="µL"
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+              </div>
+            </div>
+            {(() => {
+              const c1 = parseFloat(dilC1) || 0
+              const c2 = parseFloat(dilC2) || 0
+              const v2 = parseFloat(dilV2) || 0
+              if (c1 > 0 && c2 > 0 && v2 > 0 && c1 >= c2) {
+                const v1 = (c2 * v2) / c1 // µL of stock needed
+                const buffer = v2 - v1
+                return (
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <div className="grid grid-cols-2 gap-1 text-center">
+                      <div>
+                        <div className="text-xs text-slate-400">Stock (V₁)</div>
+                        <div className="text-sm font-semibold text-primary">{v1.toFixed(2)}</div>
+                        <div className="text-[10px] text-slate-400">µL</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-slate-400">Buffer</div>
+                        <div className="text-sm font-semibold text-accent">{buffer.toFixed(2)}</div>
+                        <div className="text-[10px] text-slate-400">µL</div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
+              if (c1 > 0 && c2 > 0 && c1 < c2) {
+                return (
+                  <div className="bg-red-50 rounded-xl p-3 text-center">
+                    <p className="text-sm text-red-500">C₁ must be ≥ C₂</p>
+                  </div>
+                )
+              }
+              return null
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Global Parameters */}
+      {activeTab === 'conjugation' && <>
       {/* Global Parameters */}
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 mb-4">
         <h2 className="text-xs font-bold text-primary uppercase tracking-wide mb-3">Parameters</h2>
@@ -402,6 +671,8 @@ export default function ConjugationCalculator() {
           </div>
         </div>
       )}
+
+      </>}
 
       {/* Save to Project Modal */}
       {showSaveModal && (
