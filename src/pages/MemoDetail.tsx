@@ -202,7 +202,7 @@ export default function MemoDetail() {
 
       {/* Add Entry Form */}
       <form onSubmit={addEntry} className="mb-6">
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden focus-within:ring-2 focus-within:ring-teal-400 focus-within:border-transparent">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden focus-within:ring-2 focus-within:ring-accent focus-within:border-transparent">
           <textarea
             ref={textareaRef}
             value={entryText}
@@ -237,7 +237,7 @@ export default function MemoDetail() {
               <button
                 type="button"
                 onClick={() => cameraInputRef.current?.click()}
-                className="p-2 text-slate-400 hover:text-teal-500 hover:bg-teal-50 rounded-lg transition-colors"
+                className="p-2 text-slate-400 hover:text-accent hover:bg-orange-50 rounded-lg transition-colors"
                 title="Take photo"
               >
                 <Camera className="w-5 h-5" />
@@ -245,7 +245,7 @@ export default function MemoDetail() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="p-2 text-slate-400 hover:text-teal-500 hover:bg-teal-50 rounded-lg transition-colors"
+                className="p-2 text-slate-400 hover:text-accent hover:bg-orange-50 rounded-lg transition-colors"
                 title="Choose photo"
               >
                 <Image className="w-5 h-5" />
@@ -279,7 +279,7 @@ export default function MemoDetail() {
               <button
                 type="submit"
                 disabled={uploading}
-                className="flex items-center gap-1.5 bg-teal-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-600 active:scale-95 transition-all disabled:opacity-50"
+                className="flex items-center gap-1.5 bg-accent text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-accent-dark active:scale-95 transition-all disabled:opacity-50"
               >
                 <Plus className="w-4 h-4" />
                 {uploading ? 'Processing...' : 'Add'}
@@ -305,12 +305,12 @@ export default function MemoDetail() {
                     onChange={e => setEditText(e.target.value)}
                     autoFocus
                     rows={3}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-teal-400 text-base resize-none"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-accent text-base resize-none"
                   />
                   <div className="flex gap-2">
                     <button
                       onClick={() => saveEdit(entry.id)}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-teal-500 text-white rounded-lg text-sm hover:bg-teal-600 transition-colors"
+                      className="flex items-center gap-1 px-3 py-1.5 bg-accent text-white rounded-lg text-sm hover:bg-accent-dark transition-colors"
                     >
                       <Check className="w-3.5 h-3.5" /> Save
                     </button>
@@ -329,8 +329,8 @@ export default function MemoDetail() {
                     onClick={() => toggleDone(entry)}
                     className={`mt-0.5 flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
                       entry.done
-                        ? 'bg-teal-500 border-teal-500 text-white'
-                        : 'border-slate-300 hover:border-teal-400'
+                        ? 'bg-accent border-accent text-white'
+                        : 'border-slate-300 hover:border-accent'
                     }`}
                   >
                     {entry.done && <Check className="w-3.5 h-3.5" />}

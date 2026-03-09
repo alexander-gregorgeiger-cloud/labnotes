@@ -125,10 +125,10 @@ export default function ProjectList() {
         </div>
         <div
           onClick={() => navigate('/memos')}
-          className="flex items-center gap-3 bg-white rounded-2xl p-3 shadow-sm border border-slate-200 hover:border-teal-300 hover:shadow-md transition-all cursor-pointer"
+          className="flex items-center gap-3 bg-white rounded-2xl p-3 shadow-sm border border-slate-200 hover:border-accent hover:shadow-md transition-all cursor-pointer"
         >
-          <div className="w-9 h-9 bg-teal-100 rounded-xl flex items-center justify-center">
-            <StickyNote className="w-5 h-5 text-teal-600" />
+          <div className="w-9 h-9 bg-orange-100 rounded-xl flex items-center justify-center">
+            <StickyNote className="w-5 h-5 text-accent" />
           </div>
           <div className="flex-1">
             <span className="font-medium text-slate-900 text-sm">Memos</span>

@@ -90,7 +90,7 @@ export default function MemoList() {
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="w-10 h-10 bg-teal-500 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center">
             <StickyNote className="w-6 h-6 text-white" />
           </div>
           <div>
@@ -100,7 +100,7 @@ export default function MemoList() {
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="w-10 h-10 bg-teal-500 text-white rounded-full flex items-center justify-center hover:bg-teal-600 active:scale-95 transition-all shadow-lg"
+          className="w-10 h-10 bg-accent text-white rounded-full flex items-center justify-center hover:bg-accent-dark active:scale-95 transition-all shadow-lg"
         >
           <Plus className="w-5 h-5" />
         </button>
@@ -123,19 +123,19 @@ export default function MemoList() {
             value={name}
             onChange={e => setName(e.target.value)}
             autoFocus
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent text-base"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent text-base"
           />
           <textarea
             placeholder="Topic / Description (optional)"
             value={description}
             onChange={e => setDescription(e.target.value)}
             rows={2}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent text-base resize-none"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent text-base resize-none"
           />
           <div className="flex gap-2">
             <button
               type="submit"
-              className="flex-1 bg-teal-500 text-white py-2 rounded-lg font-medium hover:bg-teal-600 active:scale-[0.98] transition-all"
+              className="flex-1 bg-accent text-white py-2 rounded-lg font-medium hover:bg-accent-dark active:scale-[0.98] transition-all"
             >
               Create Memo
             </button>
@@ -160,7 +160,7 @@ export default function MemoList() {
           <p className="text-slate-400 mb-6">Create your first memo</p>
           <button
             onClick={() => setShowForm(true)}
-            className="bg-teal-500 text-white px-6 py-2.5 rounded-full font-medium hover:bg-teal-600 transition-colors"
+            className="bg-accent text-white px-6 py-2.5 rounded-full font-medium hover:bg-accent-dark transition-colors"
           >
             New Memo
           </button>
@@ -171,7 +171,7 @@ export default function MemoList() {
             <div
               key={memo.id}
               onClick={() => navigate(`/memo/${memo.id}`)}
-              className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 hover:border-teal-300 hover:shadow-md transition-all cursor-pointer active:scale-[0.99]"
+              className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 hover:border-accent hover:shadow-md transition-all cursor-pointer active:scale-[0.99]"
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
