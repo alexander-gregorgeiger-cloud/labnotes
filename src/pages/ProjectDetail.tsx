@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { doc, collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, Plus, Download, Trash2, Edit3, Check, X, Camera, Image } from 'lucide-react'
+import { ArrowLeft, Plus, Download, Trash2, Edit3, Check, X, Camera, Image, StickyNote } from 'lucide-react'
 import { exportProject } from '../export'
 import type { Project, Note } from '../db'
 
@@ -47,6 +47,8 @@ export default function ProjectDetail() {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
+  const [showMemoForm, setShowMemoForm] = useState(false)
+  const [memoText, setMemoText] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -169,6 +171,27 @@ export default function ProjectDetail() {
     setEditText(note.content)
   }
 
+  async function addMemo() {
+    if (!memoText.trim() || !user || !id) return
+    const now = Timestamp.now()
+    // Create memo in memos collection
+    await addDoc(collection(firestore, 'users', user.uid, 'memos'), {
+      content: memoText.trim(),
+      done: false,
+      createdAt: now,
+      updatedAt: now,
+    })
+    // Log note in this project
+    await addDoc(collection(firestore, 'users', user.uid, 'projects', id, 'notes'), {
+      content: `Memo added: ${memoText.trim()}`,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await updateDoc(doc(firestore, 'users', user.uid, 'projects', id), { updatedAt: now })
+    setMemoText('')
+    setShowMemoForm(false)
+  }
+
   async function handleExport() {
     if (!project) return
     await exportProject(project, notes)
@@ -256,6 +279,15 @@ export default function ProjectDetail() {
                 title="Choose photo"
               >
                 <Image className="w-5 h-5" />
+              </button>
+              {/* Memo button */}
+              <button
+                type="button"
+                onClick={() => setShowMemoForm(true)}
+                className="p-2 text-slate-400 hover:text-accent hover:bg-orange-50 rounded-lg transition-colors"
+                title="Add memo"
+              >
+                <StickyNote className="w-5 h-5" />
               </button>
               <input
                 ref={cameraInputRef}
@@ -376,6 +408,52 @@ export default function ProjectDetail() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Memo Form Modal */}
+      {showMemoForm && (
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            zIndex: 99999, backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+          onClick={() => setShowMemoForm(false)}
+        >
+          <div
+            className="bg-white rounded-2xl p-5 w-full max-w-sm shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold text-slate-900 mb-1">Add Memo</h2>
+            <p className="text-sm text-slate-500 mb-4">
+              Creates a memo and logs it in this project.
+            </p>
+            <textarea
+              value={memoText}
+              onChange={e => setMemoText(e.target.value)}
+              placeholder="Memo text..."
+              autoFocus
+              rows={3}
+              className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-accent resize-none"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={addMemo}
+                disabled={!memoText.trim()}
+                className="flex-1 bg-accent text-white py-2.5 rounded-lg font-medium hover:bg-accent-dark transition-colors disabled:opacity-40"
+              >
+                Add Memo
+              </button>
+              <button
+                onClick={() => { setShowMemoForm(false); setMemoText('') }}
+                className="px-4 py-2.5 text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
