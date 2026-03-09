@@ -45,6 +45,7 @@ export default function ProjectDetail() {
   const [editText, setEditText] = useState('')
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -334,7 +335,7 @@ export default function ProjectDetail() {
                       src={note.imageData}
                       alt="Note photo"
                       className="w-full rounded-lg mb-3 cursor-pointer"
-                      onClick={() => window.open(note.imageData, '_blank')}
+                      onClick={() => setLightboxImage(note.imageData!)}
                     />
                   )}
                   {note.content && (
@@ -364,6 +365,32 @@ export default function ProjectDetail() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Fullscreen Image Lightbox */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+          onClick={() => setLightboxImage(null)}
+        >
+          <button
+            onClick={() => setLightboxImage(null)}
+            className="absolute top-4 right-4 z-10 bg-black/50 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <div
+            className="w-full h-full overflow-auto flex items-center justify-center"
+            onClick={e => e.stopPropagation()}
+          >
+            <img
+              src={lightboxImage}
+              alt="Full size"
+              className="max-w-none"
+              style={{ touchAction: 'pinch-zoom', maxHeight: '90vh', objectFit: 'contain' }}
+            />
+          </div>
         </div>
       )}
     </div>
