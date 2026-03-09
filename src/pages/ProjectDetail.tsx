@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { doc, collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
@@ -331,17 +332,22 @@ export default function ProjectDetail() {
               ) : (
                 <>
                   {note.imageData && (
-                    <button
-                      type="button"
-                      className="w-full mb-3 block rounded-lg overflow-hidden border border-slate-100 active:opacity-80"
-                      onClick={() => setLightboxImage(note.imageData!)}
+                    <div
+                      className="w-full mb-3 rounded-lg overflow-hidden border border-slate-100 relative"
+                      role="button"
+                      tabIndex={0}
+                      onPointerUp={() => setLightboxImage(note.imageData!)}
                     >
                       <img
                         src={note.imageData}
                         alt="Note photo"
                         className="w-full rounded-lg"
+                        draggable={false}
                       />
-                    </button>
+                      <div className="absolute bottom-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
+                        Tap to zoom
+                      </div>
+                    </div>
                   )}
                   {note.content && (
                     <p className="text-slate-800 whitespace-pre-wrap">{note.content}</p>
@@ -373,35 +379,61 @@ export default function ProjectDetail() {
         </div>
       )}
 
-      {/* Fullscreen Image Lightbox */}
-      {lightboxImage && (
+      {/* Fullscreen Image Lightbox - rendered via portal to document.body */}
+      {lightboxImage && createPortal(
         <div
-          className="fixed inset-0 z-50 bg-black flex flex-col"
-          style={{ touchAction: 'none' }}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 99999,
+            backgroundColor: '#000',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
         >
-          <div className="flex justify-end p-3 flex-shrink-0">
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 12, flexShrink: 0 }}>
             <button
               type="button"
-              onClick={() => setLightboxImage(null)}
-              className="bg-white/20 text-white rounded-full w-10 h-10 flex items-center justify-center backdrop-blur-sm"
+              onPointerUp={() => setLightboxImage(null)}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: '50%',
+                backgroundColor: 'rgba(255,255,255,0.2)',
+                color: '#fff',
+                border: 'none',
+                fontSize: 24,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              <X className="w-6 h-6" />
+              ✕
             </button>
           </div>
           <div
-            className="flex-1 overflow-auto"
-            style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y pinch-zoom' }}
+            style={{
+              flex: 1,
+              overflow: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 16,
+            }}
           >
-            <div className="min-h-full flex items-center justify-center p-4">
-              <img
-                src={lightboxImage}
-                alt="Full size"
-                className="max-w-full"
-                style={{ touchAction: 'pinch-zoom' }}
-              />
-            </div>
+            <img
+              src={lightboxImage}
+              alt="Full size"
+              style={{ maxWidth: '100%', touchAction: 'pinch-zoom' }}
+            />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
