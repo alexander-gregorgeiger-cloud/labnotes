@@ -6,6 +6,8 @@ import ProjectDetail from './pages/ProjectDetail'
 import ExperimentList from './pages/ExperimentList'
 import ExperimentDetail from './pages/ExperimentDetail'
 import ConjugationCalculator from './pages/ConjugationCalculator'
+import MemoList from './pages/MemoList'
+import MemoDetail from './pages/MemoDetail'
 
 export default function App() {
   const { user, loading } = useAuth()
@@ -29,6 +31,8 @@ export default function App() {
       <Route path="/experiments" element={<ExperimentList />} />
       <Route path="/experiment/:id" element={<ExperimentDetail />} />
       <Route path="/conjugation" element={<ConjugationCalculator />} />
+      <Route path="/memos" element={<MemoList />} />
+      <Route path="/memo/:id" element={<MemoDetail />} />
     </Routes>
   )
 }

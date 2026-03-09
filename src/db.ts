@@ -34,6 +34,23 @@ export interface Idea {
   updatedAt: Date
 }
 
+export interface Memo {
+  id: string
+  name: string
+  description: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface MemoEntry {
+  id: string
+  memoId: string
+  content: string
+  imageData?: string
+  createdAt: Date
+  updatedAt: Date
+}
+
 const db = new Dexie('LabNotesDB') as Dexie & {
   projects: EntityTable<Project, 'id'>
   notes: EntityTable<Note, 'id'>

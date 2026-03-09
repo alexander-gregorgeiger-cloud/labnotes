@@ -4,7 +4,7 @@ import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, getDocs
 import { signOut } from 'firebase/auth'
 import { firestore, auth } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { Plus, FlaskConical, Trash2, FolderOpen, LogOut, Calculator, Lightbulb, ChevronRight } from 'lucide-react'
+import { Plus, FlaskConical, Trash2, FolderOpen, LogOut, Calculator, Lightbulb, StickyNote, ChevronRight } from 'lucide-react'
 import type { Project } from '../db'
 
 export default function ProjectList() {
@@ -120,6 +120,19 @@ export default function ProjectList() {
           <div className="flex-1">
             <span className="font-medium text-slate-900 text-sm">Experimental Planning</span>
             <p className="text-xs text-slate-400">Plan experiments & collect ideas</p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-300" />
+        </div>
+        <div
+          onClick={() => navigate('/memos')}
+          className="flex items-center gap-3 bg-white rounded-2xl p-3 shadow-sm border border-slate-200 hover:border-teal-300 hover:shadow-md transition-all cursor-pointer"
+        >
+          <div className="w-9 h-9 bg-teal-100 rounded-xl flex items-center justify-center">
+            <StickyNote className="w-5 h-5 text-teal-600" />
+          </div>
+          <div className="flex-1">
+            <span className="font-medium text-slate-900 text-sm">Memos</span>
+            <p className="text-xs text-slate-400">Quick notes & reminders</p>
           </div>
           <ChevronRight className="w-4 h-4 text-slate-300" />
         </div>
