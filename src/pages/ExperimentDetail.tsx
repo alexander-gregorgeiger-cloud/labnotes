@@ -329,12 +329,17 @@ export default function ExperimentDetail() {
               ) : (
                 <>
                   {idea.imageData && (
-                    <img
-                      src={idea.imageData}
-                      alt="Idea photo"
-                      className="w-full rounded-lg mb-3 cursor-pointer"
+                    <button
+                      type="button"
+                      className="w-full mb-3 block rounded-lg overflow-hidden border border-slate-100 active:opacity-80"
                       onClick={() => setLightboxImage(idea.imageData!)}
-                    />
+                    >
+                      <img
+                        src={idea.imageData}
+                        alt="Idea photo"
+                        className="w-full rounded-lg"
+                      />
+                    </button>
                   )}
                   {idea.content && (
                     <p className="text-slate-800 whitespace-pre-wrap">{idea.content}</p>
@@ -369,25 +374,30 @@ export default function ExperimentDetail() {
       {/* Fullscreen Image Lightbox */}
       {lightboxImage && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
-          onClick={() => setLightboxImage(null)}
+          className="fixed inset-0 z-50 bg-black flex flex-col"
+          style={{ touchAction: 'none' }}
         >
-          <button
-            onClick={() => setLightboxImage(null)}
-            className="absolute top-4 right-4 z-10 bg-black/50 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl"
-          >
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex justify-end p-3 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setLightboxImage(null)}
+              className="bg-white/20 text-white rounded-full w-10 h-10 flex items-center justify-center backdrop-blur-sm"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
           <div
-            className="w-full h-full overflow-auto flex items-center justify-center"
-            onClick={e => e.stopPropagation()}
+            className="flex-1 overflow-auto"
+            style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y pinch-zoom' }}
           >
-            <img
-              src={lightboxImage}
-              alt="Full size"
-              className="max-w-none"
-              style={{ touchAction: 'pinch-zoom', maxHeight: '90vh', objectFit: 'contain' }}
-            />
+            <div className="min-h-full flex items-center justify-center p-4">
+              <img
+                src={lightboxImage}
+                alt="Full size"
+                className="max-w-full"
+                style={{ touchAction: 'pinch-zoom' }}
+              />
+            </div>
           </div>
         </div>
       )}
