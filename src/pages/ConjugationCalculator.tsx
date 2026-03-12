@@ -157,10 +157,42 @@ export default function ConjugationCalculator() {
     return text
   }
 
+  function buildProteinText(): string {
+    const abs = parseFloat(pAbs) || 0
+    const eps = parseFloat(pEpsilon) || 0
+    const path = parseFloat(pPath) || 1
+    const mw = parseFloat(pMW) || 0
+    const vol = parseFloat(pVol) || 0
+
+    const cM = abs / (eps * path)
+    const cUM = cM * 1e6
+    const nMol = vol > 0 ? cM * vol * 1e-3 : 0
+    const nNmol = nMol * 1e9
+    const mG = mw > 0 ? nMol * mw : 0
+    const mUg = mG * 1e6
+
+    let text = `Protein Calculator Results\n`
+    text += `Date: ${new Date().toLocaleDateString()}\n\n`
+    text += `── Parameters ──\n`
+    text += `A280 = ${abs}\n`
+    text += `ε = ${eps} M⁻¹cm⁻¹\n`
+    if (mw > 0) text += `MW = ${mw} Da\n`
+    text += `Path = ${path} cm\n`
+    if (vol > 0) text += `Volume = ${vol} mL\n`
+    text += `\n── Results ──\n`
+    text += `c = ${cM.toExponential(3)} M (${cUM.toFixed(2)} µM)\n`
+    if (vol > 0) text += `n = ${nMol.toExponential(3)} mol (${nNmol.toFixed(2)} nmol)\n`
+    if (vol > 0 && mw > 0) text += `m = ${mG.toExponential(3)} g (${mUg.toFixed(1)} µg)\n`
+
+    return text
+  }
+
+  const proteinHasResult = (parseFloat(pAbs) || 0) > 0 && (parseFloat(pEpsilon) || 0) > 0
+
   async function saveToProject() {
     if (!user || !selectedProjectId) return
     const now = Timestamp.now()
-    const text = buildTableText()
+    const text = activeTab === 'protein' ? buildProteinText() : buildTableText()
     await addDoc(
       collection(firestore, 'users', user.uid, 'projects', selectedProjectId, 'notes'),
       { content: text, createdAt: now, updatedAt: now }
@@ -212,21 +244,23 @@ export default function ConjugationCalculator() {
           <span>Back</span>
         </button>
         <div className="flex gap-2">
-          <button
-            onClick={downloadCSV}
-            disabled={validCount === 0}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-40"
-          >
-            <Download className="w-4 h-4" />
-            CSV
-          </button>
+          {activeTab !== 'protein' && (
+            <button
+              onClick={downloadCSV}
+              disabled={validCount === 0}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-40"
+            >
+              <Download className="w-4 h-4" />
+              CSV
+            </button>
+          )}
           <button
             onClick={() => setShowSaveModal(true)}
-            disabled={validCount === 0}
+            disabled={activeTab === 'protein' ? !proteinHasResult : validCount === 0}
             className="flex items-center gap-1.5 px-3 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-40"
           >
             <Save className="w-4 h-4" />
-            Save to Project
+            Save
           </button>
         </div>
       </div>
