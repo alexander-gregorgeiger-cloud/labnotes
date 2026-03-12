@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, Plus, Trash2, Copy, Save, Download, FlaskConical, Droplets } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Copy, Save, Download, FlaskConical, Droplets, Atom } from 'lucide-react'
 import type { Project } from '../db'
 
 interface Construct {
@@ -45,7 +45,14 @@ export default function ConjugationCalculator() {
   const [selectedProjectId, setSelectedProjectId] = useState(searchParams.get('projectId') || '')
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [activeTab, setActiveTab] = useState<'conjugation' | 'tools'>('conjugation')
+  const [activeTab, setActiveTab] = useState<'conjugation' | 'tools' | 'protein'>('conjugation')
+
+  // Protein Calculator
+  const [pAbs, setPAbs] = useState('')
+  const [pEpsilon, setPEpsilon] = useState('')
+  const [pMW, setPMW] = useState('')       // Da
+  const [pPath, setPPath] = useState('1')  // cm
+  const [pVol, setPVol] = useState('')     // mL
 
   // Mass → Concentration tool
   const [massMass, setMassMass] = useState('')
@@ -250,6 +257,17 @@ export default function ConjugationCalculator() {
         >
           <Droplets className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
           Tools
+        </button>
+        <button
+          onClick={() => setActiveTab('protein')}
+          className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+            activeTab === 'protein'
+              ? 'bg-white text-primary shadow-sm'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Atom className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
+          Protein
         </button>
       </div>
 
@@ -473,6 +491,141 @@ export default function ConjugationCalculator() {
               }
               return null
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* Protein Tab */}
+      {activeTab === 'protein' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+            <h2 className="text-xs font-bold text-primary uppercase tracking-wide mb-3">A280 → Amount & Mass</h2>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <div>
+                <label className="text-xs text-slate-400">Absorbance (A)</label>
+                <input
+                  type="number"
+                  value={pAbs}
+                  onChange={e => setPAbs(e.target.value)}
+                  placeholder="A280"
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                  step="0.001"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">ε (M⁻¹cm⁻¹)</label>
+                <input
+                  type="number"
+                  value={pEpsilon}
+                  onChange={e => setPEpsilon(e.target.value)}
+                  placeholder="Ext. coeff."
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div>
+                <label className="text-xs text-slate-400">MW (Da)</label>
+                <input
+                  type="number"
+                  value={pMW}
+                  onChange={e => setPMW(e.target.value)}
+                  placeholder="Da"
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Path (cm)</label>
+                <input
+                  type="number"
+                  value={pPath}
+                  onChange={e => setPPath(e.target.value)}
+                  placeholder="1"
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                  step="0.1"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Volume (mL)</label>
+                <input
+                  type="number"
+                  value={pVol}
+                  onChange={e => setPVol(e.target.value)}
+                  placeholder="mL"
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                  step="0.1"
+                />
+              </div>
+            </div>
+            {(() => {
+              const abs = parseFloat(pAbs) || 0
+              const eps = parseFloat(pEpsilon) || 0
+              const path = parseFloat(pPath) || 1
+              const mw = parseFloat(pMW) || 0
+              const vol = parseFloat(pVol) || 0
+              if (abs > 0 && eps > 0) {
+                const cM = abs / (eps * path)
+                const cUM = cM * 1e6
+                const hasVol = vol > 0
+                const hasMW = mw > 0
+                const hasAll = hasVol && hasMW
+                const nMol = hasVol ? cM * vol * 1e-3 : 0
+                const nNmol = nMol * 1e9
+                const mG = hasAll ? nMol * mw : 0
+                const mUg = mG * 1e6
+                return (
+                  <div className="space-y-2">
+                    <div className="bg-slate-50 rounded-xl p-3">
+                      <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Concentration</div>
+                      <div className="grid grid-cols-2 gap-2 text-center">
+                        <div>
+                          <div className="text-sm font-bold text-accent">{cM.toExponential(3)}</div>
+                          <div className="text-[10px] text-slate-400">M</div>
+                        </div>
+                        <div>
+                          <div className="text-sm font-bold text-accent">{cUM.toFixed(2)}</div>
+                          <div className="text-[10px] text-slate-400">µM</div>
+                        </div>
+                      </div>
+                    </div>
+                    {hasVol && (
+                      <div className="bg-slate-50 rounded-xl p-3">
+                        <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Amount</div>
+                        <div className="grid grid-cols-2 gap-2 text-center">
+                          <div>
+                            <div className="text-sm font-bold text-primary">{nMol.toExponential(3)}</div>
+                            <div className="text-[10px] text-slate-400">mol</div>
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-primary">{nNmol.toFixed(2)}</div>
+                            <div className="text-[10px] text-slate-400">nmol</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {hasAll && (
+                      <div className="bg-slate-50 rounded-xl p-3">
+                        <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Mass</div>
+                        <div className="grid grid-cols-2 gap-2 text-center">
+                          <div>
+                            <div className="text-sm font-bold text-primary">{mG.toExponential(3)}</div>
+                            <div className="text-[10px] text-slate-400">g</div>
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-primary">{mUg.toFixed(1)}</div>
+                            <div className="text-[10px] text-slate-400">µg</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+              return null
+            })()}
+          </div>
+          <div className="text-xs text-slate-400 text-center">
+            c = A / (ε × l) · n = c × V · m = n × MW
           </div>
         </div>
       )}
