@@ -51,7 +51,8 @@ export default function ConjugationCalculator() {
   const [pAbs, setPAbs] = useState('')
   const [pEpsilon, setPEpsilon] = useState('')
   const [pEpsMode, setPEpsMode] = useState<'molar' | 'mass'>('molar')
-  const [pMW, setPMW] = useState('')       // Da
+  const [pMW, setPMW] = useState('')
+  const [pMwUnit, setPMwUnit] = useState<'da' | 'kda'>('da')
   const [pPath, setPPath] = useState('1')  // cm
   const [pVol, setPVol] = useState('')     // µL
 
@@ -171,7 +172,8 @@ export default function ConjugationCalculator() {
     const abs = parseFloat(pAbs) || 0
     const eps = parseFloat(pEpsilon) || 0
     const path = parseFloat(pPath) || 1
-    const mw = parseFloat(pMW) || 0
+    const mwRaw = parseFloat(pMW) || 0
+    const mw = mwRaw * (pMwUnit === 'kda' ? 1000 : 1)
     const vol = parseFloat(pVol) || 0
     const isMass = pEpsMode === 'mass'
 
@@ -196,7 +198,7 @@ export default function ConjugationCalculator() {
     text += `── Parameters ──\n`
     text += `A280 = ${abs}\n`
     text += `ε = ${eps} ${isMass ? '(mg/mL)⁻¹cm⁻¹' : 'M⁻¹cm⁻¹'}\n`
-    if (mw > 0) text += `MW = ${mw} Da\n`
+    if (mw > 0) text += `MW = ${mwRaw} ${pMwUnit === 'kda' ? 'kDa' : 'Da'}\n`
     text += `Path = ${path} cm\n`
     if (vol > 0) text += `Volume = ${vol} µL\n`
     text += `\n── Results ──\n`
@@ -604,13 +606,33 @@ export default function ConjugationCalculator() {
             </div>
             <div className="grid grid-cols-3 gap-2 mb-3">
               <div>
-                <label className="text-xs text-slate-400">MW (Da)</label>
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <label className="text-xs text-slate-400">MW</label>
+                  <div className="flex bg-slate-100 rounded-md p-0.5">
+                    <button
+                      onClick={() => setPMwUnit('da')}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                        pMwUnit === 'da' ? 'bg-white text-primary shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                    >
+                      Da
+                    </button>
+                    <button
+                      onClick={() => setPMwUnit('kda')}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                        pMwUnit === 'kda' ? 'bg-white text-primary shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                    >
+                      kDa
+                    </button>
+                  </div>
+                </div>
                 <input
                   type="number"
                   value={pMW}
                   onChange={e => setPMW(e.target.value)}
-                  placeholder="Da"
-                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                  placeholder={pMwUnit === 'kda' ? 'e.g. 150' : 'e.g. 150000'}
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light"
                 />
               </div>
               <div>
@@ -640,7 +662,7 @@ export default function ConjugationCalculator() {
               const abs = parseFloat(pAbs) || 0
               const eps = parseFloat(pEpsilon) || 0
               const path = parseFloat(pPath) || 1
-              const mw = parseFloat(pMW) || 0
+              const mw = (parseFloat(pMW) || 0) * (pMwUnit === 'kda' ? 1000 : 1)
               const vol = parseFloat(pVol) || 0
               const isMass = pEpsMode === 'mass'
               if (abs > 0 && eps > 0) {

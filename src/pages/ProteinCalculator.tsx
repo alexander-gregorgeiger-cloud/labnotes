@@ -15,7 +15,8 @@ export default function ProteinCalculator() {
   const [abs, setAbs] = useState('')
   const [auc, setAuc] = useState('')     // mAU·mL
   const [epsilon, setEpsilon] = useState('')
-  const [mw, setMw] = useState('')       // Da
+  const [mw, setMw] = useState('')
+  const [mwUnit, setMwUnit] = useState<'da' | 'kda'>('da')
   const [path, setPath] = useState('1')  // cm (default 1 for A280, 0.2 for AUC)
   const [vol, setVol] = useState('')     // µL
 
@@ -37,7 +38,7 @@ export default function ProteinCalculator() {
   const aucVal = parseFloat(auc) || 0
   const epsVal = parseFloat(epsilon) || 0
   const pathVal = parseFloat(path) || (mode === 'auc' ? 0.2 : 1)
-  const mwVal = parseFloat(mw) || 0
+  const mwVal = (parseFloat(mw) || 0) * (mwUnit === 'kda' ? 1000 : 1)
   const volVal = parseFloat(vol) || 0
 
   const hasResult = mode === 'a280'
@@ -113,7 +114,7 @@ export default function ProteinCalculator() {
       text += `A280 = ${absVal}\n`
     }
     text += `ε = ${epsVal} ${isMass ? '(mg/mL)⁻¹cm⁻¹' : 'M⁻¹cm⁻¹'}\n`
-    if (hasMW) text += `MW = ${mwVal} Da\n`
+    if (hasMW) text += `MW = ${parseFloat(mw)} ${mwUnit === 'kda' ? 'kDa' : 'Da'}\n`
     text += `Path = ${pathVal} cm\n`
     if (hasVol) text += `Volume = ${volVal} µL\n`
     text += `\n── Results ──\n`
@@ -260,13 +261,33 @@ export default function ProteinCalculator() {
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <label className="text-xs text-slate-500 font-medium">MW (Da)</label>
+            <div className="flex items-center gap-1.5 mb-1">
+              <label className="text-xs text-slate-500 font-medium">MW</label>
+              <div className="flex bg-slate-100 rounded-md p-0.5">
+                <button
+                  onClick={() => setMwUnit('da')}
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    mwUnit === 'da' ? 'bg-white text-primary shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  Da
+                </button>
+                <button
+                  onClick={() => setMwUnit('kda')}
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    mwUnit === 'kda' ? 'bg-white text-primary shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  kDa
+                </button>
+              </div>
+            </div>
             <input
               type="number"
               value={mw}
               onChange={e => setMw(e.target.value)}
-              placeholder="Da"
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-primary-light"
+              placeholder={mwUnit === 'kda' ? 'e.g. 150' : 'e.g. 150000'}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light"
             />
           </div>
           <div>
