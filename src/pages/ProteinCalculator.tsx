@@ -16,6 +16,15 @@ export default function ProteinCalculator() {
   const [path, setPath] = useState('1')  // cm
   const [vol, setVol] = useState('')     // µL
 
+  // Conjugate ε/MW calculator
+  const [conjProtE280, setConjProtE280] = useState('210000')
+  const [conjProtE260, setConjProtE260] = useState('120000')
+  const [conjProtMW, setConjProtMW] = useState('150000')
+  const [conjOligoE280, setConjOligoE280] = useState('100000')
+  const [conjOligoE260, setConjOligoE260] = useState('200000')
+  const [conjOligoMW, setConjOligoMW] = useState('6600')
+  const [conjDOL, setConjDOL] = useState('1')
+
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [showSaveModal, setShowSaveModal] = useState(false)
@@ -226,6 +235,96 @@ export default function ProteinCalculator() {
           )}
         </div>
       )}
+
+      {/* Conjugate ε/MW Calculator */}
+      <div className="mt-4 bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+        <h2 className="text-xs font-bold text-primary uppercase tracking-wide mb-3">Conjugate ε & MW</h2>
+        <p className="text-[10px] text-slate-400 mb-3">Calculate combined values for a protein–oligo conjugate</p>
+
+        {/* Protein row */}
+        <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Protein</div>
+        <div className="grid grid-cols-3 gap-2 mb-2">
+          <div>
+            <label className="text-[10px] text-slate-400">ε₂₈₀</label>
+            <input type="number" value={conjProtE280} onChange={e => setConjProtE280(e.target.value)}
+              className="w-full px-2 py-1 border border-slate-200 rounded-lg text-xs mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+          </div>
+          <div>
+            <label className="text-[10px] text-slate-400">ε₂₆₀</label>
+            <input type="number" value={conjProtE260} onChange={e => setConjProtE260(e.target.value)}
+              className="w-full px-2 py-1 border border-slate-200 rounded-lg text-xs mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+          </div>
+          <div>
+            <label className="text-[10px] text-slate-400">MW (Da)</label>
+            <input type="number" value={conjProtMW} onChange={e => setConjProtMW(e.target.value)}
+              className="w-full px-2 py-1 border border-slate-200 rounded-lg text-xs mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+          </div>
+        </div>
+
+        {/* Oligo row */}
+        <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Oligo</div>
+        <div className="grid grid-cols-3 gap-2 mb-2">
+          <div>
+            <label className="text-[10px] text-slate-400">ε₂₈₀</label>
+            <input type="number" value={conjOligoE280} onChange={e => setConjOligoE280(e.target.value)}
+              className="w-full px-2 py-1 border border-slate-200 rounded-lg text-xs mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+          </div>
+          <div>
+            <label className="text-[10px] text-slate-400">ε₂₆₀</label>
+            <input type="number" value={conjOligoE260} onChange={e => setConjOligoE260(e.target.value)}
+              className="w-full px-2 py-1 border border-slate-200 rounded-lg text-xs mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+          </div>
+          <div>
+            <label className="text-[10px] text-slate-400">MW (Da)</label>
+            <input type="number" value={conjOligoMW} onChange={e => setConjOligoMW(e.target.value)}
+              className="w-full px-2 py-1 border border-slate-200 rounded-lg text-xs mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+          </div>
+        </div>
+
+        {/* DOL */}
+        <div className="mb-3">
+          <label className="text-[10px] text-slate-400">DOL (oligos per protein)</label>
+          <input type="number" value={conjDOL} onChange={e => setConjDOL(e.target.value)}
+            className="w-24 px-2 py-1 border border-slate-200 rounded-lg text-xs mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+            step="0.1" min="0" />
+        </div>
+
+        {/* Conjugate results */}
+        {(() => {
+          const pE280 = parseFloat(conjProtE280) || 0
+          const pE260 = parseFloat(conjProtE260) || 0
+          const pMW = parseFloat(conjProtMW) || 0
+          const oE280 = parseFloat(conjOligoE280) || 0
+          const oE260 = parseFloat(conjOligoE260) || 0
+          const oMW = parseFloat(conjOligoMW) || 0
+          const dol = parseFloat(conjDOL) || 0
+          if (pMW > 0 || pE280 > 0) {
+            const cE280 = pE280 + oE280 * dol
+            const cE260 = pE260 + oE260 * dol
+            const cMW = pMW + oMW * dol
+            return (
+              <div className="bg-slate-50 rounded-xl p-3">
+                <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Conjugate</div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <div className="text-sm font-bold text-accent">{cE280.toLocaleString()}</div>
+                    <div className="text-[10px] text-slate-400">ε₂₈₀</div>
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-accent">{cE260.toLocaleString()}</div>
+                    <div className="text-[10px] text-slate-400">ε₂₆₀</div>
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-primary">{cMW.toLocaleString()}</div>
+                    <div className="text-[10px] text-slate-400">MW (Da)</div>
+                  </div>
+                </div>
+              </div>
+            )
+          }
+          return null
+        })()}
+      </div>
 
       {/* Reference Table */}
       <div className="mt-4 bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
