@@ -6,6 +6,7 @@ import ProjectDetail from './pages/ProjectDetail'
 import ExperimentList from './pages/ExperimentList'
 import ExperimentDetail from './pages/ExperimentDetail'
 import ConjugationCalculator from './pages/ConjugationCalculator'
+import ProteinCalculator from './pages/ProteinCalculator'
 import MemoList from './pages/MemoList'
 
 export default function App() {
@@ -30,6 +31,7 @@ export default function App() {
       <Route path="/experiments" element={<ExperimentList />} />
       <Route path="/experiment/:id" element={<ExperimentDetail />} />
       <Route path="/conjugation" element={<ConjugationCalculator />} />
+      <Route path="/protein" element={<ProteinCalculator />} />
       <Route path="/memos" element={<MemoList />} />
     </Routes>
   )
