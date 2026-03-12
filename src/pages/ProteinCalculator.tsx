@@ -1,15 +1,25 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, Timestamp } from 'firebase/firestore'
+import { firestore } from '../firebase'
+import { useAuth } from '../AuthContext'
+import { ArrowLeft, Save } from 'lucide-react'
+import type { Project } from '../db'
 
 export default function ProteinCalculator() {
   const navigate = useNavigate()
+  const { user } = useAuth()
 
   const [abs, setAbs] = useState('')
   const [epsilon, setEpsilon] = useState('')
   const [mw, setMw] = useState('')       // Da
   const [path, setPath] = useState('1')  // cm
   const [vol, setVol] = useState('')     // µL
+
+  const [projects, setProjects] = useState<Project[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [showSaveModal, setShowSaveModal] = useState(false)
+  const [saved, setSaved] = useState(false)
 
   const absVal = parseFloat(abs) || 0
   const epsVal = parseFloat(epsilon) || 0
@@ -29,6 +39,52 @@ export default function ProteinCalculator() {
   const mG = hasAll ? nMol * mwVal : 0
   const mUg = mG * 1e6
 
+  useEffect(() => {
+    if (!user) return
+    const q = query(
+      collection(firestore, 'users', user.uid, 'projects'),
+      orderBy('updatedAt', 'desc')
+    )
+    const unsub = onSnapshot(q, (snap) => {
+      setProjects(snap.docs.map(d => ({
+        id: d.id,
+        name: d.data().name,
+        description: d.data().description || '',
+        createdAt: d.data().createdAt?.toDate() || new Date(),
+        updatedAt: d.data().updatedAt?.toDate() || new Date(),
+      })))
+    })
+    return unsub
+  }, [user])
+
+  function buildText(): string {
+    let text = `Protein Calculator Results\n`
+    text += `Date: ${new Date().toLocaleDateString()}\n\n`
+    text += `── Parameters ──\n`
+    text += `A280 = ${absVal}\n`
+    text += `ε = ${epsVal} M⁻¹cm⁻¹\n`
+    if (hasMW) text += `MW = ${mwVal} Da\n`
+    text += `Path = ${pathVal} cm\n`
+    if (hasVol) text += `Volume = ${volVal} µL\n`
+    text += `\n── Results ──\n`
+    text += `c = ${cM.toExponential(3)} M (${cUM.toFixed(2)} µM)\n`
+    if (hasVol) text += `n = ${nMol.toExponential(3)} mol (${nNmol.toFixed(2)} nmol)\n`
+    if (hasAll) text += `m = ${mG.toExponential(3)} g (${mUg.toFixed(1)} µg)\n`
+    return text
+  }
+
+  async function saveToProject() {
+    if (!user || !selectedProjectId) return
+    const now = Timestamp.now()
+    await addDoc(
+      collection(firestore, 'users', user.uid, 'projects', selectedProjectId, 'notes'),
+      { content: buildText(), createdAt: now, updatedAt: now }
+    )
+    await updateDoc(doc(firestore, 'users', user.uid, 'projects', selectedProjectId), { updatedAt: now })
+    setSaved(true)
+    setTimeout(() => { setSaved(false); setShowSaveModal(false) }, 1500)
+  }
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       {/* Header */}
@@ -39,6 +95,14 @@ export default function ProteinCalculator() {
         >
           <ArrowLeft className="w-5 h-5" />
           <span>Back</span>
+        </button>
+        <button
+          onClick={() => setShowSaveModal(true)}
+          disabled={!hasResult}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-40"
+        >
+          <Save className="w-4 h-4" />
+          Save
         </button>
       </div>
 
@@ -167,6 +231,63 @@ export default function ProteinCalculator() {
       <div className="mt-4 text-xs text-slate-400 text-center">
         c = A / (ε × l) &nbsp;·&nbsp; n = c × V &nbsp;·&nbsp; m = n × MW
       </div>
+
+      {/* Save to Project Modal */}
+      {showSaveModal && (
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            zIndex: 99999, backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+          onClick={() => setShowSaveModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl p-5 w-full max-w-sm shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            {saved ? (
+              <div className="text-center py-6">
+                <div className="text-4xl mb-2">✓</div>
+                <p className="text-lg font-semibold text-primary">Saved to project!</p>
+              </div>
+            ) : (
+              <>
+                <h2 className="text-lg font-bold text-slate-900 mb-1">Save to Project</h2>
+                <p className="text-sm text-slate-500 mb-4">
+                  The calculation results will be added as a note to the selected project.
+                </p>
+                <select
+                  value={selectedProjectId}
+                  onChange={e => setSelectedProjectId(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                >
+                  <option value="">Select a project...</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <button
+                    onClick={saveToProject}
+                    disabled={!selectedProjectId}
+                    className="flex-1 bg-primary text-white py-2.5 rounded-lg font-medium hover:bg-primary-dark transition-colors disabled:opacity-40"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setShowSaveModal(false)}
+                    className="px-4 py-2.5 text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
