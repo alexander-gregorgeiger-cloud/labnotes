@@ -227,8 +227,42 @@ export default function ProteinCalculator() {
         </div>
       )}
 
+      {/* Reference Table */}
+      <div className="mt-4 bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+        <h2 className="text-xs font-bold text-primary uppercase tracking-wide mb-3">Reference Values</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-slate-400 border-b border-slate-100">
+                <th className="pb-2 font-semibold">Molecule</th>
+                <th className="pb-2 font-semibold text-right">ε₂₈₀</th>
+                <th className="pb-2 font-semibold text-right">ε₂₆₀</th>
+                <th className="pb-2 font-semibold text-right">MW (Da)</th>
+              </tr>
+            </thead>
+            <tbody className="text-slate-600">
+              <tr className="border-b border-slate-50">
+                <td className="py-2 font-medium">IgG antibody</td>
+                <td className="py-2 text-right font-mono">210,000</td>
+                <td className="py-2 text-right font-mono text-slate-400">120,000</td>
+                <td className="py-2 text-right font-mono">150,000</td>
+              </tr>
+              <tr>
+                <td className="py-2 font-medium">20bp ssDNA oligo</td>
+                <td className="py-2 text-right font-mono text-slate-400">~100,000</td>
+                <td className="py-2 text-right font-mono">~200,000</td>
+                <td className="py-2 text-right font-mono">~6,600</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[10px] text-slate-400 mt-2">
+          IgG: typical values for ~150 kDa full-length antibody. Oligo: average estimates — use sequence-specific values for accuracy.
+        </p>
+      </div>
+
       {/* Formula reference */}
-      <div className="mt-4 text-xs text-slate-400 text-center">
+      <div className="mt-3 text-xs text-slate-400 text-center">
         c = A / (ε × l) &nbsp;·&nbsp; n = c × V &nbsp;·&nbsp; m = n × MW
       </div>
 
