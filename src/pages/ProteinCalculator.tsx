@@ -11,6 +11,7 @@ export default function ProteinCalculator() {
   const { user } = useAuth()
 
   const [mode, setMode] = useState<'a280' | 'auc'>('a280')
+  const [epsMode, setEpsMode] = useState<'molar' | 'mass'>('molar')
   const [abs, setAbs] = useState('')
   const [auc, setAuc] = useState('')     // mAU·mL
   const [epsilon, setEpsilon] = useState('')
@@ -44,24 +45,45 @@ export default function ProteinCalculator() {
     : aucVal > 0 && epsVal > 0
   const hasVol = volVal > 0
   const hasMW = mwVal > 0
+  const isMass = epsMode === 'mass'
 
-  // A280 mode: c = A / (ε × l), then n = c × V
-  // AUC mode:  n = AUC(mAU·mL) / (ε × l × 1e6), then c = n / V
-  const cM = mode === 'a280' && hasResult ? absVal / (epsVal * pathVal) : 0
+  // Compute all derived values based on mode and ε type
+  let cMgMl = 0, cM = 0, nMol = 0, massMg = 0
+  let aucCMgMl = 0, aucCM = 0
+
+  if (mode === 'a280' && hasResult) {
+    if (isMass) {
+      // ε(mg): c(mg/mL) = A / (ε_mg × l)
+      cMgMl = absVal / (epsVal * pathVal)
+      if (hasMW) cM = cMgMl / mwVal
+      if (hasVol) massMg = cMgMl * volVal * 1e-3
+      if (hasVol && hasMW) nMol = massMg * 1e-3 / mwVal
+    } else {
+      // ε(M): c(M) = A / (ε × l)
+      cM = absVal / (epsVal * pathVal)
+      if (hasVol) nMol = cM * volVal * 1e-6
+      if (hasVol && hasMW) massMg = nMol * mwVal * 1e3
+    }
+  } else if (mode === 'auc' && hasResult) {
+    if (isMass) {
+      // ε(mg): mass(mg) = AUC / (ε_mg × l × 1000)
+      massMg = aucVal / (epsVal * pathVal * 1000)
+      if (hasMW) nMol = massMg * 1e-3 / mwVal
+      if (hasVol) aucCMgMl = massMg / (volVal * 1e-3)
+      if (hasVol && hasMW) aucCM = nMol / (volVal * 1e-6)
+    } else {
+      // ε(M): n(mol) = AUC / (ε × l × 1e6)
+      nMol = aucVal / (epsVal * pathVal * 1e6)
+      if (hasMW) massMg = nMol * mwVal * 1e3
+      if (hasVol) aucCM = nMol / (volVal * 1e-6)
+    }
+  }
+
   const cUM = cM * 1e6
-
-  const nMol = mode === 'auc' && hasResult
-    ? aucVal / (epsVal * pathVal * 1e6)            // mol (from AUC)
-    : (mode === 'a280' && hasVol ? cM * volVal * 1e-6 : 0)  // mol (from c × V)
   const nNmol = nMol * 1e9
-
-  // In AUC mode, concentration comes from n / V (if volume given)
-  const aucCM = mode === 'auc' && hasVol ? nMol / (volVal * 1e-6) : 0  // µL → L
   const aucCUM = aucCM * 1e6
-
-  const mG = hasMW ? nMol * mwVal : 0
-  const mUg = mG * 1e6
-  const hasAll = (mode === 'a280' ? hasVol && hasMW : hasMW)
+  const mG = massMg * 1e-3
+  const mUg = massMg * 1e3
 
   useEffect(() => {
     if (!user) return
@@ -90,19 +112,32 @@ export default function ProteinCalculator() {
     } else {
       text += `A280 = ${absVal}\n`
     }
-    text += `ε = ${epsVal} M⁻¹cm⁻¹\n`
+    text += `ε = ${epsVal} ${isMass ? '(mg/mL)⁻¹cm⁻¹' : 'M⁻¹cm⁻¹'}\n`
     if (hasMW) text += `MW = ${mwVal} Da\n`
     text += `Path = ${pathVal} cm\n`
     if (hasVol) text += `Volume = ${volVal} µL\n`
     text += `\n── Results ──\n`
     if (mode === 'a280') {
-      text += `c = ${cM.toExponential(3)} M (${cUM.toFixed(2)} µM)\n`
-      if (hasVol) text += `n = ${nMol.toExponential(3)} mol (${nNmol.toFixed(2)} nmol)\n`
+      if (isMass) {
+        text += `c = ${cMgMl.toFixed(3)} mg/mL\n`
+        if (hasMW) text += `c = ${cM.toExponential(3)} M (${cUM.toFixed(2)} µM)\n`
+      } else {
+        text += `c = ${cM.toExponential(3)} M (${cUM.toFixed(2)} µM)\n`
+      }
+      if (nMol > 0) text += `n = ${nMol.toExponential(3)} mol (${nNmol.toFixed(2)} nmol)\n`
+      if (massMg > 0) text += `m = ${mG.toExponential(3)} g (${mUg.toFixed(1)} µg)\n`
     } else {
-      text += `n = ${nMol.toExponential(3)} mol (${nNmol.toFixed(2)} nmol)\n`
-      if (hasVol) text += `c = ${aucCM.toExponential(3)} M (${aucCUM.toFixed(2)} µM)\n`
+      if (isMass) {
+        text += `m = ${mG.toExponential(3)} g (${mUg.toFixed(1)} µg)\n`
+        if (hasVol) text += `c = ${aucCMgMl.toFixed(3)} mg/mL\n`
+        if (nMol > 0) text += `n = ${nMol.toExponential(3)} mol (${nNmol.toFixed(2)} nmol)\n`
+        if (aucCM > 0) text += `c = ${aucCM.toExponential(3)} M (${aucCUM.toFixed(2)} µM)\n`
+      } else {
+        text += `n = ${nMol.toExponential(3)} mol (${nNmol.toFixed(2)} nmol)\n`
+        if (hasVol) text += `c = ${aucCM.toExponential(3)} M (${aucCUM.toFixed(2)} µM)\n`
+        if (massMg > 0) text += `m = ${mG.toExponential(3)} g (${mUg.toFixed(1)} µg)\n`
+      }
     }
-    if (hasAll) text += `m = ${mG.toExponential(3)} g (${mUg.toFixed(1)} µg)\n`
     return text
   }
 
@@ -193,13 +228,33 @@ export default function ProteinCalculator() {
             )}
           </div>
           <div>
-            <label className="text-xs text-slate-500 font-medium">ε (M⁻¹cm⁻¹)</label>
+            <div className="flex items-center gap-1.5 mb-1">
+              <label className="text-xs text-slate-500 font-medium">ε</label>
+              <div className="flex bg-slate-100 rounded-md p-0.5">
+                <button
+                  onClick={() => setEpsMode('molar')}
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    epsMode === 'molar' ? 'bg-white text-primary shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  M⁻¹cm⁻¹
+                </button>
+                <button
+                  onClick={() => setEpsMode('mass')}
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    epsMode === 'mass' ? 'bg-white text-primary shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  (mg/mL)⁻¹cm⁻¹
+                </button>
+              </div>
+            </div>
             <input
               type="number"
               value={epsilon}
               onChange={e => setEpsilon(e.target.value)}
-              placeholder="Extinction coeff."
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-primary-light"
+              placeholder={isMass ? 'e.g. 1.4' : 'e.g. 210000'}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light"
             />
           </div>
         </div>
@@ -240,6 +295,9 @@ export default function ProteinCalculator() {
         {mode === 'auc' && (
           <p className="text-[10px] text-slate-400 mt-2">Standard ÄKTA UV cell: 0.2 cm (2 mm). Enter collected fraction volume to get concentration.</p>
         )}
+        {isMass && (
+          <p className="text-[10px] text-slate-400 mt-2">ε(mg) gives concentration in mg/mL directly. MW is only needed for molar values.</p>
+        )}
       </div>
 
       {/* Results */}
@@ -247,24 +305,116 @@ export default function ProteinCalculator() {
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
           <h2 className="text-xs font-bold text-primary uppercase tracking-wide mb-3">Results</h2>
 
-          {/* A280 mode: Concentration first, then Amount */}
+          {/* A280 mode */}
           {mode === 'a280' && (
             <>
-              <div className="bg-slate-50 rounded-xl p-4 mb-3">
+              {/* Concentration */}
+              <div className={`bg-slate-50 rounded-xl p-4 ${nMol > 0 || massMg > 0 ? 'mb-3' : ''}`}>
                 <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Concentration</div>
+                <div className={`grid gap-3 text-center ${isMass && cM > 0 ? 'grid-cols-3' : isMass ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                  {isMass && (
+                    <div>
+                      <div className="text-lg font-bold text-accent">{cMgMl.toFixed(3)}</div>
+                      <div className="text-xs text-slate-400">mg/mL</div>
+                    </div>
+                  )}
+                  {cM > 0 && (
+                    <>
+                      <div>
+                        <div className="text-lg font-bold text-accent">{cM.toExponential(3)}</div>
+                        <div className="text-xs text-slate-400">M</div>
+                      </div>
+                      <div>
+                        <div className="text-lg font-bold text-accent">{cUM.toFixed(2)}</div>
+                        <div className="text-xs text-slate-400">µM</div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Amount */}
+              {nMol > 0 && (
+                <div className={`bg-slate-50 rounded-xl p-4 ${massMg > 0 ? 'mb-3' : ''}`}>
+                  <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Amount</div>
+                  <div className="grid grid-cols-2 gap-3 text-center">
+                    <div>
+                      <div className="text-lg font-bold text-primary">{nMol.toExponential(3)}</div>
+                      <div className="text-xs text-slate-400">mol</div>
+                    </div>
+                    <div>
+                      <div className="text-lg font-bold text-primary">{nNmol.toFixed(2)}</div>
+                      <div className="text-xs text-slate-400">nmol</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Mass */}
+              {massMg > 0 && (
+                <div className="bg-slate-50 rounded-xl p-4">
+                  <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Mass</div>
+                  <div className="grid grid-cols-2 gap-3 text-center">
+                    <div>
+                      <div className="text-lg font-bold text-primary">{mG.toExponential(3)}</div>
+                      <div className="text-xs text-slate-400">g</div>
+                    </div>
+                    <div>
+                      <div className="text-lg font-bold text-primary">{mUg.toFixed(1)}</div>
+                      <div className="text-xs text-slate-400">µg</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* AUC mode with ε(mg): Mass → Concentration → Amount */}
+          {mode === 'auc' && isMass && (
+            <>
+              {/* Mass (primary result) */}
+              <div className={`bg-slate-50 rounded-xl p-4 ${hasVol || nMol > 0 ? 'mb-3' : ''}`}>
+                <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Mass</div>
                 <div className="grid grid-cols-2 gap-3 text-center">
                   <div>
-                    <div className="text-lg font-bold text-accent">{cM.toExponential(3)}</div>
-                    <div className="text-xs text-slate-400">M</div>
+                    <div className="text-lg font-bold text-primary">{mG.toExponential(3)}</div>
+                    <div className="text-xs text-slate-400">g</div>
                   </div>
                   <div>
-                    <div className="text-lg font-bold text-accent">{cUM.toFixed(2)}</div>
-                    <div className="text-xs text-slate-400">µM</div>
+                    <div className="text-lg font-bold text-primary">{mUg.toFixed(1)}</div>
+                    <div className="text-xs text-slate-400">µg</div>
                   </div>
                 </div>
               </div>
+
+              {/* Concentration (if volume given) */}
               {hasVol && (
-                <div className={`bg-slate-50 rounded-xl p-4 ${hasAll ? 'mb-3' : ''}`}>
+                <div className={`bg-slate-50 rounded-xl p-4 ${nMol > 0 ? 'mb-3' : ''}`}>
+                  <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Concentration (in collected volume)</div>
+                  <div className={`grid gap-3 text-center ${aucCM > 0 ? 'grid-cols-3' : 'grid-cols-1'}`}>
+                    <div>
+                      <div className="text-lg font-bold text-accent">{aucCMgMl.toFixed(3)}</div>
+                      <div className="text-xs text-slate-400">mg/mL</div>
+                    </div>
+                    {aucCM > 0 && (
+                      <>
+                        <div>
+                          <div className="text-lg font-bold text-accent">{aucCM.toExponential(3)}</div>
+                          <div className="text-xs text-slate-400">M</div>
+                        </div>
+                        <div>
+                          <div className="text-lg font-bold text-accent">{aucCUM.toFixed(2)}</div>
+                          <div className="text-xs text-slate-400">µM</div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Amount (if MW given) */}
+              {nMol > 0 && (
+                <div className="bg-slate-50 rounded-xl p-4">
                   <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Amount</div>
                   <div className="grid grid-cols-2 gap-3 text-center">
                     <div>
@@ -281,10 +431,11 @@ export default function ProteinCalculator() {
             </>
           )}
 
-          {/* AUC mode: Amount first, then Concentration (if volume given) */}
-          {mode === 'auc' && (
+          {/* AUC mode with ε(molar): Amount → Concentration → Mass */}
+          {mode === 'auc' && !isMass && (
             <>
-              <div className={`bg-slate-50 rounded-xl p-4 ${hasAll || hasVol ? 'mb-3' : ''}`}>
+              {/* Amount (primary result) */}
+              <div className={`bg-slate-50 rounded-xl p-4 ${hasVol || massMg > 0 ? 'mb-3' : ''}`}>
                 <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Amount</div>
                 <div className="grid grid-cols-2 gap-3 text-center">
                   <div>
@@ -297,8 +448,10 @@ export default function ProteinCalculator() {
                   </div>
                 </div>
               </div>
+
+              {/* Concentration (if volume given) */}
               {hasVol && (
-                <div className={`bg-slate-50 rounded-xl p-4 ${hasAll ? 'mb-3' : ''}`}>
+                <div className={`bg-slate-50 rounded-xl p-4 ${massMg > 0 ? 'mb-3' : ''}`}>
                   <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Concentration (in collected volume)</div>
                   <div className="grid grid-cols-2 gap-3 text-center">
                     <div>
@@ -312,24 +465,24 @@ export default function ProteinCalculator() {
                   </div>
                 </div>
               )}
-            </>
-          )}
 
-          {/* Mass (both modes) */}
-          {hasAll && (
-            <div className="bg-slate-50 rounded-xl p-4">
-              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Mass</div>
-              <div className="grid grid-cols-2 gap-3 text-center">
-                <div>
-                  <div className="text-lg font-bold text-primary">{mG.toExponential(3)}</div>
-                  <div className="text-xs text-slate-400">g</div>
+              {/* Mass (if MW given) */}
+              {massMg > 0 && (
+                <div className="bg-slate-50 rounded-xl p-4">
+                  <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Mass</div>
+                  <div className="grid grid-cols-2 gap-3 text-center">
+                    <div>
+                      <div className="text-lg font-bold text-primary">{mG.toExponential(3)}</div>
+                      <div className="text-xs text-slate-400">g</div>
+                    </div>
+                    <div>
+                      <div className="text-lg font-bold text-primary">{mUg.toFixed(1)}</div>
+                      <div className="text-xs text-slate-400">µg</div>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <div className="text-lg font-bold text-primary">{mUg.toFixed(1)}</div>
-                  <div className="text-xs text-slate-400">µg</div>
-                </div>
-              </div>
-            </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -434,6 +587,7 @@ export default function ProteinCalculator() {
                 <th className="pb-2 font-semibold">Molecule</th>
                 <th className="pb-2 font-semibold text-right">ε₂₈₀</th>
                 <th className="pb-2 font-semibold text-right">ε₂₆₀</th>
+                <th className="pb-2 font-semibold text-right">ε₂₈₀(mg)</th>
                 <th className="pb-2 font-semibold text-right">MW (Da)</th>
               </tr>
             </thead>
@@ -442,27 +596,33 @@ export default function ProteinCalculator() {
                 <td className="py-2 font-medium">IgG antibody</td>
                 <td className="py-2 text-right font-mono">210,000</td>
                 <td className="py-2 text-right font-mono text-slate-400">120,000</td>
+                <td className="py-2 text-right font-mono">1.4</td>
                 <td className="py-2 text-right font-mono">150,000</td>
               </tr>
               <tr>
                 <td className="py-2 font-medium">20bp ssDNA oligo</td>
                 <td className="py-2 text-right font-mono text-slate-400">~100,000</td>
                 <td className="py-2 text-right font-mono">~200,000</td>
+                <td className="py-2 text-right font-mono text-slate-400">~15</td>
                 <td className="py-2 text-right font-mono">~6,600</td>
               </tr>
             </tbody>
           </table>
         </div>
         <p className="text-[10px] text-slate-400 mt-2">
-          IgG: typical values for ~150 kDa full-length antibody. Oligo: average estimates — use sequence-specific values for accuracy.
+          IgG: typical values for ~150 kDa full-length antibody. ε(mg) in (mg/mL)⁻¹cm⁻¹. Oligo: average estimates — use sequence-specific values for accuracy.
         </p>
       </div>
 
       {/* Formula reference */}
       <div className="mt-3 text-xs text-slate-400 text-center">
         {mode === 'a280'
-          ? <>c = A / (ε × l) &nbsp;·&nbsp; n = c × V &nbsp;·&nbsp; m = n × MW</>
-          : <>n = AUC / (ε × l × 10⁶) &nbsp;·&nbsp; m = n × MW</>
+          ? (isMass
+            ? <>c<sub>mg</sub> = A / (ε<sub>mg</sub> × l) &nbsp;·&nbsp; m = c<sub>mg</sub> × V</>
+            : <>c = A / (ε × l) &nbsp;·&nbsp; n = c × V &nbsp;·&nbsp; m = n × MW</>)
+          : (isMass
+            ? <>m = AUC / (ε<sub>mg</sub> × l × 10³) &nbsp;·&nbsp; n = m / MW</>
+            : <>n = AUC / (ε × l × 10⁶) &nbsp;·&nbsp; m = n × MW</>)
         }
       </div>
 

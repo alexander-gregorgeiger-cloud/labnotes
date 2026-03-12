@@ -50,6 +50,7 @@ export default function ConjugationCalculator() {
   // Protein Calculator
   const [pAbs, setPAbs] = useState('')
   const [pEpsilon, setPEpsilon] = useState('')
+  const [pEpsMode, setPEpsMode] = useState<'molar' | 'mass'>('molar')
   const [pMW, setPMW] = useState('')       // Da
   const [pPath, setPPath] = useState('1')  // cm
   const [pVol, setPVol] = useState('')     // µL
@@ -172,26 +173,41 @@ export default function ConjugationCalculator() {
     const path = parseFloat(pPath) || 1
     const mw = parseFloat(pMW) || 0
     const vol = parseFloat(pVol) || 0
+    const isMass = pEpsMode === 'mass'
 
-    const cM = abs / (eps * path)
+    let cMgMl = 0, cM = 0, nMol = 0, massMg = 0
+    if (isMass) {
+      cMgMl = abs / (eps * path)
+      if (mw > 0) cM = cMgMl / mw
+      if (vol > 0) massMg = cMgMl * vol * 1e-3
+      if (vol > 0 && mw > 0) nMol = massMg * 1e-3 / mw
+    } else {
+      cM = abs / (eps * path)
+      if (vol > 0) nMol = cM * vol * 1e-6
+      if (vol > 0 && mw > 0) massMg = nMol * mw * 1e3
+    }
     const cUM = cM * 1e6
-    const nMol = vol > 0 ? cM * vol * 1e-6 : 0
     const nNmol = nMol * 1e9
-    const mG = mw > 0 ? nMol * mw : 0
-    const mUg = mG * 1e6
+    const mG = massMg * 1e-3
+    const mUg = massMg * 1e3
 
     let text = `Protein Calculator Results\n`
     text += `Date: ${new Date().toLocaleDateString()}\n\n`
     text += `── Parameters ──\n`
     text += `A280 = ${abs}\n`
-    text += `ε = ${eps} M⁻¹cm⁻¹\n`
+    text += `ε = ${eps} ${isMass ? '(mg/mL)⁻¹cm⁻¹' : 'M⁻¹cm⁻¹'}\n`
     if (mw > 0) text += `MW = ${mw} Da\n`
     text += `Path = ${path} cm\n`
     if (vol > 0) text += `Volume = ${vol} µL\n`
     text += `\n── Results ──\n`
-    text += `c = ${cM.toExponential(3)} M (${cUM.toFixed(2)} µM)\n`
-    if (vol > 0) text += `n = ${nMol.toExponential(3)} mol (${nNmol.toFixed(2)} nmol)\n`
-    if (vol > 0 && mw > 0) text += `m = ${mG.toExponential(3)} g (${mUg.toFixed(1)} µg)\n`
+    if (isMass) {
+      text += `c = ${cMgMl.toFixed(3)} mg/mL\n`
+      if (mw > 0) text += `c = ${cM.toExponential(3)} M (${cUM.toFixed(2)} µM)\n`
+    } else {
+      text += `c = ${cM.toExponential(3)} M (${cUM.toFixed(2)} µM)\n`
+    }
+    if (nMol > 0) text += `n = ${nMol.toExponential(3)} mol (${nNmol.toFixed(2)} nmol)\n`
+    if (massMg > 0) text += `m = ${mG.toExponential(3)} g (${mUg.toFixed(1)} µg)\n`
 
     return text
   }
@@ -556,13 +572,33 @@ export default function ConjugationCalculator() {
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400">ε (M⁻¹cm⁻¹)</label>
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <label className="text-xs text-slate-400">ε</label>
+                  <div className="flex bg-slate-100 rounded-md p-0.5">
+                    <button
+                      onClick={() => setPEpsMode('molar')}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                        pEpsMode === 'molar' ? 'bg-white text-primary shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                    >
+                      M⁻¹cm⁻¹
+                    </button>
+                    <button
+                      onClick={() => setPEpsMode('mass')}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                        pEpsMode === 'mass' ? 'bg-white text-primary shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                    >
+                      (mg/mL)⁻¹cm⁻¹
+                    </button>
+                  </div>
+                </div>
                 <input
                   type="number"
                   value={pEpsilon}
                   onChange={e => setPEpsilon(e.target.value)}
-                  placeholder="Ext. coeff."
-                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                  placeholder={pEpsMode === 'mass' ? 'e.g. 1.4' : 'e.g. 210000'}
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light"
                 />
               </div>
             </div>
@@ -606,32 +642,49 @@ export default function ConjugationCalculator() {
               const path = parseFloat(pPath) || 1
               const mw = parseFloat(pMW) || 0
               const vol = parseFloat(pVol) || 0
+              const isMass = pEpsMode === 'mass'
               if (abs > 0 && eps > 0) {
-                const cM = abs / (eps * path)
+                let cMgMl = 0, cM = 0, nMol = 0, massMg = 0
+                if (isMass) {
+                  cMgMl = abs / (eps * path)
+                  if (mw > 0) cM = cMgMl / mw
+                  if (vol > 0) massMg = cMgMl * vol * 1e-3
+                  if (vol > 0 && mw > 0) nMol = massMg * 1e-3 / mw
+                } else {
+                  cM = abs / (eps * path)
+                  if (vol > 0) nMol = cM * vol * 1e-6
+                  if (vol > 0 && mw > 0) massMg = nMol * mw * 1e3
+                }
                 const cUM = cM * 1e6
-                const hasVol = vol > 0
-                const hasMW = mw > 0
-                const hasAll = hasVol && hasMW
-                const nMol = hasVol ? cM * vol * 1e-6 : 0
                 const nNmol = nMol * 1e9
-                const mG = hasAll ? nMol * mw : 0
-                const mUg = mG * 1e6
+                const mG = massMg * 1e-3
+                const mUg = massMg * 1e3
                 return (
                   <div className="space-y-2">
                     <div className="bg-slate-50 rounded-xl p-3">
                       <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Concentration</div>
-                      <div className="grid grid-cols-2 gap-2 text-center">
-                        <div>
-                          <div className="text-sm font-bold text-accent">{cM.toExponential(3)}</div>
-                          <div className="text-[10px] text-slate-400">M</div>
-                        </div>
-                        <div>
-                          <div className="text-sm font-bold text-accent">{cUM.toFixed(2)}</div>
-                          <div className="text-[10px] text-slate-400">µM</div>
-                        </div>
+                      <div className={`grid gap-2 text-center ${isMass && cM > 0 ? 'grid-cols-3' : isMass ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                        {isMass && (
+                          <div>
+                            <div className="text-sm font-bold text-accent">{cMgMl.toFixed(3)}</div>
+                            <div className="text-[10px] text-slate-400">mg/mL</div>
+                          </div>
+                        )}
+                        {cM > 0 && (
+                          <>
+                            <div>
+                              <div className="text-sm font-bold text-accent">{cM.toExponential(3)}</div>
+                              <div className="text-[10px] text-slate-400">M</div>
+                            </div>
+                            <div>
+                              <div className="text-sm font-bold text-accent">{cUM.toFixed(2)}</div>
+                              <div className="text-[10px] text-slate-400">µM</div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
-                    {hasVol && (
+                    {nMol > 0 && (
                       <div className="bg-slate-50 rounded-xl p-3">
                         <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Amount</div>
                         <div className="grid grid-cols-2 gap-2 text-center">
@@ -646,7 +699,7 @@ export default function ConjugationCalculator() {
                         </div>
                       </div>
                     )}
-                    {hasAll && (
+                    {massMg > 0 && (
                       <div className="bg-slate-50 rounded-xl p-3">
                         <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Mass</div>
                         <div className="grid grid-cols-2 gap-2 text-center">
@@ -757,6 +810,7 @@ export default function ConjugationCalculator() {
                   <th className="pb-2 font-semibold">Molecule</th>
                   <th className="pb-2 font-semibold text-right">ε₂₈₀</th>
                   <th className="pb-2 font-semibold text-right">ε₂₆₀</th>
+                  <th className="pb-2 font-semibold text-right">ε₂₈₀(mg)</th>
                   <th className="pb-2 font-semibold text-right">MW (Da)</th>
                 </tr>
               </thead>
@@ -765,20 +819,25 @@ export default function ConjugationCalculator() {
                   <td className="py-2 font-medium">IgG</td>
                   <td className="py-2 text-right font-mono">210,000</td>
                   <td className="py-2 text-right font-mono text-slate-400">120,000</td>
+                  <td className="py-2 text-right font-mono">1.4</td>
                   <td className="py-2 text-right font-mono">150,000</td>
                 </tr>
                 <tr>
                   <td className="py-2 font-medium">20bp ssDNA</td>
                   <td className="py-2 text-right font-mono text-slate-400">~100,000</td>
                   <td className="py-2 text-right font-mono">~200,000</td>
+                  <td className="py-2 text-right font-mono text-slate-400">~15</td>
                   <td className="py-2 text-right font-mono">~6,600</td>
                 </tr>
               </tbody>
             </table>
-            <p className="text-[10px] text-slate-400 mt-2">Oligo values are averages — use sequence-specific ε for accuracy.</p>
+            <p className="text-[10px] text-slate-400 mt-2">ε(mg) in (mg/mL)⁻¹cm⁻¹. Oligo values are averages — use sequence-specific ε for accuracy.</p>
           </div>
           <div className="text-xs text-slate-400 text-center">
-            c = A / (ε × l) · n = c × V · m = n × MW
+            {pEpsMode === 'mass'
+              ? <>c<sub>mg</sub> = A / (ε<sub>mg</sub> × l) · m = c<sub>mg</sub> × V</>
+              : <>c = A / (ε × l) · n = c × V · m = n × MW</>
+            }
           </div>
         </div>
       )}
