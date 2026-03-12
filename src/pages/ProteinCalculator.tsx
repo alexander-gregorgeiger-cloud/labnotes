@@ -9,7 +9,7 @@ export default function ProteinCalculator() {
   const [epsilon, setEpsilon] = useState('')
   const [mw, setMw] = useState('')       // Da
   const [path, setPath] = useState('1')  // cm
-  const [vol, setVol] = useState('')     // mL
+  const [vol, setVol] = useState('')     // µL
 
   const absVal = parseFloat(abs) || 0
   const epsVal = parseFloat(epsilon) || 0
@@ -24,7 +24,7 @@ export default function ProteinCalculator() {
 
   const cM = hasResult ? absVal / (epsVal * pathVal) : 0
   const cUM = cM * 1e6
-  const nMol = hasVol ? cM * volVal * 1e-3 : 0
+  const nMol = hasVol ? cM * volVal * 1e-6 : 0
   const nNmol = nMol * 1e9
   const mG = hasAll ? nMol * mwVal : 0
   const mUg = mG * 1e6
@@ -94,12 +94,12 @@ export default function ProteinCalculator() {
             />
           </div>
           <div>
-            <label className="text-xs text-slate-500 font-medium">Volume (mL)</label>
+            <label className="text-xs text-slate-500 font-medium">Volume (µL)</label>
             <input
               type="number"
               value={vol}
               onChange={e => setVol(e.target.value)}
-              placeholder="mL"
+              placeholder="µL"
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-primary-light"
               step="0.1"
             />

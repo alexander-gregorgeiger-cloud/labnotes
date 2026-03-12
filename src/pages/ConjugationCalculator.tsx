@@ -52,7 +52,7 @@ export default function ConjugationCalculator() {
   const [pEpsilon, setPEpsilon] = useState('')
   const [pMW, setPMW] = useState('')       // Da
   const [pPath, setPPath] = useState('1')  // cm
-  const [pVol, setPVol] = useState('')     // mL
+  const [pVol, setPVol] = useState('')     // µL
 
   // Mass → Concentration tool
   const [massMass, setMassMass] = useState('')
@@ -166,7 +166,7 @@ export default function ConjugationCalculator() {
 
     const cM = abs / (eps * path)
     const cUM = cM * 1e6
-    const nMol = vol > 0 ? cM * vol * 1e-3 : 0
+    const nMol = vol > 0 ? cM * vol * 1e-6 : 0
     const nNmol = nMol * 1e9
     const mG = mw > 0 ? nMol * mw : 0
     const mUg = mG * 1e6
@@ -178,7 +178,7 @@ export default function ConjugationCalculator() {
     text += `ε = ${eps} M⁻¹cm⁻¹\n`
     if (mw > 0) text += `MW = ${mw} Da\n`
     text += `Path = ${path} cm\n`
-    if (vol > 0) text += `Volume = ${vol} mL\n`
+    if (vol > 0) text += `Volume = ${vol} µL\n`
     text += `\n── Results ──\n`
     text += `c = ${cM.toExponential(3)} M (${cUM.toFixed(2)} µM)\n`
     if (vol > 0) text += `n = ${nMol.toExponential(3)} mol (${nNmol.toFixed(2)} nmol)\n`
@@ -580,12 +580,12 @@ export default function ConjugationCalculator() {
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400">Volume (mL)</label>
+                <label className="text-xs text-slate-400">Volume (µL)</label>
                 <input
                   type="number"
                   value={pVol}
                   onChange={e => setPVol(e.target.value)}
-                  placeholder="mL"
+                  placeholder="µL"
                   className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
                   step="0.1"
                 />
@@ -603,7 +603,7 @@ export default function ConjugationCalculator() {
                 const hasVol = vol > 0
                 const hasMW = mw > 0
                 const hasAll = hasVol && hasMW
-                const nMol = hasVol ? cM * vol * 1e-3 : 0
+                const nMol = hasVol ? cM * vol * 1e-6 : 0
                 const nNmol = nMol * 1e9
                 const mG = hasAll ? nMol * mw : 0
                 const mUg = mG * 1e6
