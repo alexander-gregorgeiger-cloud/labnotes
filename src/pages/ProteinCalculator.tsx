@@ -21,7 +21,7 @@ export default function ProteinCalculator() {
   const [searchParams] = useSearchParams()
   const { user } = useAuth()
 
-  const [mode, setMode] = useState<'a280' | 'auc' | 'dilution'>('a280')
+  const [mode, setMode] = useState<'a280' | 'auc' | 'dilution'>('dilution')
   const [epsMode, setEpsMode] = useState<'molar' | 'mass'>('molar')
   const [abs, setAbs] = useState('')
   const [auc, setAuc] = useState('')     // mAU·mL
@@ -284,6 +284,14 @@ export default function ProteinCalculator() {
       {/* Mode Toggle */}
       <div className="flex mb-4 bg-slate-100 rounded-xl p-1">
         <button
+          onClick={() => setMode('dilution')}
+          className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+            mode === 'dilution' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Dilution
+        </button>
+        <button
           onClick={() => { setMode('a280'); setPath('1') }}
           className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
             mode === 'a280' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
@@ -298,14 +306,6 @@ export default function ProteinCalculator() {
           }`}
         >
           AUC (ÄKTA)
-        </button>
-        <button
-          onClick={() => setMode('dilution')}
-          className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
-            mode === 'dilution' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          Dilution
         </button>
       </div>
 
