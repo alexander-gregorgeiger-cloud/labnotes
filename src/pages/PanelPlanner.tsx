@@ -63,6 +63,8 @@ export default function PanelPlanner() {
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [backfilled, setBackfilled] = useState(false)
+  const [backfillProtein, setBackfillProtein] = useState('')
 
   const proteinCount = getProteinCount(plex)
 
@@ -138,7 +140,7 @@ export default function PanelPlanner() {
       for (let c = 0; c < 8; c++) {
         const idx = getProteinIndex(plex, r, c)
         const label = labels[idx]?.trim()
-        const color = label ? (colors[idx] || DEFAULT_COLORS[idx % DEFAULT_COLORS.length]) : EMPTY_COLOR
+        const color = label ? (colors[idx] || DEFAULT_COLORS[idx % DEFAULT_COLORS.length]) : (backfilled ? '#FFF9C4' : EMPTY_COLOR)
         const x = gridStartX + c * (cellSize + gap)
         const y = gridStartY + r * (cellSize + gap)
 
@@ -174,6 +176,17 @@ export default function PanelPlanner() {
       ctx.fillStyle = '#334155'
       ctx.fillText(`${item.desc}: ${item.label}`, 34, y + 9)
     })
+
+    // Backfill info
+    if (backfilled) {
+      const bfY = legendY + legendItems.length * 18 + 4
+      ctx.fillStyle = '#FFF9C4'
+      ctx.beginPath()
+      ctx.arc(24, bfY + 5, 5, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = '#92400E'
+      ctx.fillText(`Backfill: ${backfillProtein || '(unspecified)'}`, 34, bfY + 9)
+    }
 
     return canvas.toDataURL('image/png')
   }
@@ -232,6 +245,38 @@ export default function PanelPlanner() {
             {p}-plex
           </button>
         ))}
+      </div>
+
+      {/* Backfill toggle */}
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 mb-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="text-sm font-medium text-slate-900">Backfilled</span>
+            <p className="text-xs text-slate-400">Fill empty spots with a background protein</p>
+          </div>
+          <button
+            onClick={() => setBackfilled(!backfilled)}
+            className={`w-11 h-6 rounded-full transition-colors relative ${
+              backfilled ? 'bg-primary' : 'bg-slate-300'
+            }`}
+          >
+            <div className={`w-5 h-5 bg-white rounded-full shadow-sm absolute top-0.5 transition-transform ${
+              backfilled ? 'translate-x-5.5 left-[22px]' : 'left-[2px]'
+            }`} />
+          </button>
+        </div>
+        {backfilled && (
+          <div className="mt-3">
+            <label className="text-xs text-slate-400">Backfill protein</label>
+            <input
+              type="text"
+              value={backfillProtein}
+              onChange={e => setBackfillProtein(e.target.value)}
+              placeholder="e.g. BSA, Casein, IgG isotype"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-primary-light"
+            />
+          </div>
+        )}
       </div>
 
       {/* Protein assignment */}
@@ -347,17 +392,22 @@ export default function PanelPlanner() {
               {Array.from({ length: 8 }, (_, c) => {
                 const idx = getProteinIndex(plex, r, c)
                 const label = labels[idx]?.trim()
-                const color = label ? (colors[idx] || DEFAULT_COLORS[idx % DEFAULT_COLORS.length]) : EMPTY_COLOR
+                const color = label ? (colors[idx] || DEFAULT_COLORS[idx % DEFAULT_COLORS.length]) : (backfilled ? '#FFF9C4' : EMPTY_COLOR)
                 return (
                   <div
                     key={c}
                     className="w-10 h-10 rounded-md flex items-center justify-center"
                     style={{ backgroundColor: color }}
-                    title={label || `Spot R${r + 1}C${c + 1}`}
+                    title={label || (backfilled && backfillProtein ? backfillProtein : `Spot R${r + 1}C${c + 1}`)}
                   >
                     {plex >= 8 && label && (
                       <span className="text-[8px] text-white font-bold drop-shadow-sm truncate px-0.5">
                         {label.slice(0, 4)}
+                      </span>
+                    )}
+                    {!label && backfilled && backfillProtein && (
+                      <span className="text-[7px] text-amber-700/60 font-medium truncate px-0.5">
+                        {backfillProtein.slice(0, 3)}
                       </span>
                     )}
                   </div>
@@ -380,7 +430,7 @@ export default function PanelPlanner() {
               })
             }
           }
-          if (items.length === 0) return null
+          if (items.length === 0 && !backfilled) return null
           return (
             <div className="mt-3 pt-3 border-t border-slate-100">
               <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -390,6 +440,12 @@ export default function PanelPlanner() {
                     <span className="text-xs text-slate-600">{item.desc}: {item.label}</span>
                   </div>
                 ))}
+                {backfilled && (
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: '#FFF9C4' }} />
+                    <span className="text-xs text-amber-700">Backfill: {backfillProtein || '(unspecified)'}</span>
+                  </div>
+                )}
               </div>
             </div>
           )
