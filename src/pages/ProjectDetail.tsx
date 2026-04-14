@@ -4,7 +4,18 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { doc, collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, Plus, Download, Trash2, Edit3, Check, X, Camera, Image, StickyNote } from 'lucide-react'
+import { ArrowLeft, Plus, Download, Trash2, Edit3, Check, X, Camera, Image, StickyNote, Palette } from 'lucide-react'
+
+const NOTE_COLORS = [
+  { id: 'red', hex: '#E53935' },
+  { id: 'tan', hex: '#D4A574' },
+  { id: 'yellow', hex: '#FFEE58' },
+  { id: 'blue', hex: '#42A5F5' },
+  { id: 'pink', hex: '#EC407A' },
+  { id: 'orange', hex: '#FFA726' },
+  { id: 'purple', hex: '#AB47BC' },
+  { id: 'green', hex: '#9CCC65' },
+]
 import { exportProject } from '../export'
 import type { Project, Note } from '../db'
 
@@ -49,6 +60,8 @@ export default function ProjectDetail() {
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
   const [showMemoForm, setShowMemoForm] = useState(false)
   const [memoText, setMemoText] = useState('')
+  const [colorPickerNoteId, setColorPickerNoteId] = useState<string | null>(null)
+  const [showLegendEditor, setShowLegendEditor] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -63,6 +76,7 @@ export default function ProjectDetail() {
           id: snap.id,
           name: data.name,
           description: data.description || '',
+          colorLegend: data.colorLegend || undefined,
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         })
@@ -82,6 +96,7 @@ export default function ProjectDetail() {
           projectId: id,
           content: data.content,
           imageData: data.imageData || undefined,
+          color: data.color || undefined,
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         }
@@ -171,6 +186,28 @@ export default function ProjectDetail() {
     setEditText(note.content)
   }
 
+  async function setNoteColor(noteId: string, color: string | undefined) {
+    if (!user || !id) return
+    await updateDoc(doc(firestore, 'users', user.uid, 'projects', id, 'notes', noteId), {
+      color: color || null,
+    })
+    setColorPickerNoteId(null)
+  }
+
+  async function updateColorLegend(hex: string, label: string) {
+    if (!user || !id || !project) return
+    const legend = { ...project.colorLegend || {} }
+    if (label.trim()) {
+      legend[hex] = label.trim()
+    } else {
+      delete legend[hex]
+    }
+    await updateDoc(doc(firestore, 'users', user.uid, 'projects', id), {
+      colorLegend: legend,
+      updatedAt: Timestamp.now(),
+    })
+  }
+
   async function addMemo() {
     if (!memoText.trim() || !user || !id) return
     const now = Timestamp.now()
@@ -208,13 +245,24 @@ export default function ProjectDetail() {
           <ArrowLeft className="w-5 h-5" />
           <span>Projects</span>
         </button>
-        <button
-          onClick={handleExport}
-          className="flex items-center gap-2 px-3 py-2 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
-        >
-          <Download className="w-4 h-4" />
-          <span>Export</span>
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowLegendEditor(!showLegendEditor)}
+            className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${
+              showLegendEditor ? 'bg-primary text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+            title="Color legend"
+          >
+            <Palette className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 px-3 py-2 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            <span>Export</span>
+          </button>
+        </div>
       </div>
 
       {/* Project Info */}
@@ -226,7 +274,49 @@ export default function ProjectDetail() {
         <p className="text-xs text-slate-400 mt-2">
           Created {new Date(project.createdAt).toLocaleDateString()} &middot; {notes.length} notes
         </p>
+
+        {/* Color legend (read-only) */}
+        {!showLegendEditor && (() => {
+          const assigned = NOTE_COLORS.filter(c => project.colorLegend?.[c.hex])
+          if (assigned.length === 0) return null
+          return (
+            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+              {assigned.map(c => (
+                <div key={c.id} className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: c.hex }} />
+                  <span className="text-xs text-slate-600">{project.colorLegend![c.hex]}</span>
+                </div>
+              ))}
+            </div>
+          )
+        })()}
       </div>
+
+      {/* Color Legend Editor */}
+      {showLegendEditor && (
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 mb-4">
+          <h3 className="text-xs font-bold text-primary uppercase tracking-wide mb-3">Color Legend</h3>
+          <p className="text-[10px] text-slate-400 mb-3">Assign labels to colors. Tap the colored circle on a note to tag it.</p>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+            {NOTE_COLORS.map(c => (
+              <div key={c.id} className="flex items-center gap-1.5">
+                <div
+                  className="w-4 h-4 rounded-full flex-shrink-0 border"
+                  style={{ backgroundColor: c.hex, borderColor: 'rgba(0,0,0,0.12)' }}
+                />
+                <input
+                  type="text"
+                  defaultValue={project.colorLegend?.[c.hex] || ''}
+                  placeholder={c.id}
+                  onBlur={e => updateColorLegend(c.hex, e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                  className="flex-1 min-w-0 px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary-light"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Add Note Form */}
       <form onSubmit={addNote} className="mb-6">
@@ -336,7 +426,37 @@ export default function ProjectDetail() {
       ) : (
         <div className="space-y-3">
           {notes.map(note => (
-            <div key={note.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+            <div key={note.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 relative">
+              {/* Color dot */}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setColorPickerNoteId(colorPickerNoteId === note.id ? null : note.id) }}
+                className="absolute top-3 right-3 w-5 h-5 rounded-full flex-shrink-0 border-2 border-white shadow-sm hover:scale-110 transition-transform"
+                style={{ backgroundColor: note.color || '#e2e8f0' }}
+                title="Change color"
+              />
+              {/* Color picker popup */}
+              {colorPickerNoteId === note.id && (
+                <div className="absolute top-9 right-3 z-50 bg-white rounded-xl shadow-lg border border-slate-200 p-2 flex gap-1.5 flex-wrap w-[140px]">
+                  {NOTE_COLORS.map(c => (
+                    <button
+                      key={c.id}
+                      onClick={(e) => { e.stopPropagation(); setNoteColor(note.id, c.hex) }}
+                      className="w-6 h-6 rounded-full border-2 transition-transform hover:scale-125 active:scale-95"
+                      style={{
+                        backgroundColor: c.hex,
+                        borderColor: note.color === c.hex ? '#1e293b' : 'rgba(0,0,0,0.12)',
+                      }}
+                    />
+                  ))}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setNoteColor(note.id, undefined) }}
+                    className="w-6 h-6 rounded-full border-2 border-slate-300 bg-white flex items-center justify-center text-slate-400 text-xs hover:scale-125 transition-transform"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
               {editingId === note.id ? (
                 <div>
                   <textarea

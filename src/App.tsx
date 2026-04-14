@@ -8,6 +8,7 @@ import ExperimentDetail from './pages/ExperimentDetail'
 import ConjugationCalculator from './pages/ConjugationCalculator'
 import ProteinCalculator from './pages/ProteinCalculator'
 import MemoList from './pages/MemoList'
+import PanelPlanner from './pages/PanelPlanner'
 
 export default function App() {
   const { user, loading } = useAuth()
@@ -33,6 +34,7 @@ export default function App() {
       <Route path="/conjugation" element={<ConjugationCalculator />} />
       <Route path="/protein" element={<ProteinCalculator />} />
       <Route path="/memos" element={<MemoList />} />
+      <Route path="/panel-planner" element={<PanelPlanner />} />
     </Routes>
   )
 }

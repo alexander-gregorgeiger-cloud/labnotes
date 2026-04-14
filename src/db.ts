@@ -4,6 +4,7 @@ export interface Project {
   id: string
   name: string
   description: string
+  colorLegend?: Record<string, string>
   createdAt: Date
   updatedAt: Date
 }
@@ -13,6 +14,7 @@ export interface Note {
   projectId: string
   content: string
   imageData?: string
+  color?: string
   createdAt: Date
   updatedAt: Date
 }
