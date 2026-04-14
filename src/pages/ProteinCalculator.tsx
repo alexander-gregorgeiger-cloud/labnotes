@@ -60,10 +60,14 @@ export default function ProteinCalculator() {
   const [dilC2, setDilC2] = useState('')
   const [dilV2, setDilV2] = useState('')
 
-  // Pre-fill from URL params (from projects)
+  // Pre-fill from URL params (from projects / epsilon library)
   useEffect(() => {
     const pProjectId = searchParams.get('projectId')
+    const pEpsilon = searchParams.get('epsilon')
+    const pMw = searchParams.get('mw')
     if (pProjectId) setSelectedProjectId(pProjectId)
+    if (pEpsilon) { setEpsilon(pEpsilon); setMode('a280') }
+    if (pMw) { setMw(pMw); setMwUnit('da') }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const absVal = parseFloat(abs) || 0
