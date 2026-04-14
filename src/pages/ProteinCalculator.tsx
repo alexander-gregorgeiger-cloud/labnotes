@@ -55,6 +55,11 @@ export default function ProteinCalculator() {
   const [newEpsMass, setNewEpsMass] = useState('')
   const [newEpsMW, setNewEpsMW] = useState('')
 
+  // Dilution calculator (C1V1 = C2V2)
+  const [dilC1, setDilC1] = useState('')
+  const [dilC2, setDilC2] = useState('')
+  const [dilV2, setDilV2] = useState('')
+
   // Pre-fill from URL params (from projects)
   useEffect(() => {
     const pProjectId = searchParams.get('projectId')
@@ -736,6 +741,57 @@ export default function ProteinCalculator() {
             ? <>m = AUC / (ε<sub>mg</sub> × l × 10³) &nbsp;·&nbsp; n = m / MW</>
             : <>n = AUC / (ε × l × 10⁶) &nbsp;·&nbsp; m = n × MW</>)
         }
+      </div>
+
+      {/* Dilution Calculator */}
+      <div className="mt-4 bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+        <h2 className="text-xs font-bold text-primary uppercase tracking-wide mb-3">Dilution (C₁V₁ = C₂V₂)</h2>
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          <div>
+            <label className="text-xs text-slate-400">C₁ initial (µM)</label>
+            <input type="number" value={dilC1} onChange={e => setDilC1(e.target.value)} placeholder="µM"
+              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-400">C₂ target (µM)</label>
+            <input type="number" value={dilC2} onChange={e => setDilC2(e.target.value)} placeholder="µM"
+              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-400">V₂ final (µL)</label>
+            <input type="number" value={dilV2} onChange={e => setDilV2(e.target.value)} placeholder="µL"
+              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+          </div>
+        </div>
+        {(() => {
+          const c1 = parseFloat(dilC1) || 0
+          const c2 = parseFloat(dilC2) || 0
+          const v2 = parseFloat(dilV2) || 0
+          if (c1 > 0 && c2 > 0 && v2 > 0 && c1 >= c2) {
+            const v1 = (c2 * v2) / c1
+            const buffer = v2 - v1
+            return (
+              <div className="bg-slate-50 rounded-xl p-3">
+                <div className="grid grid-cols-2 gap-1 text-center">
+                  <div>
+                    <div className="text-xs text-slate-400">Stock (V₁)</div>
+                    <div className="text-sm font-semibold text-primary">{v1.toFixed(2)}</div>
+                    <div className="text-[10px] text-slate-400">µL</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400">Buffer</div>
+                    <div className="text-sm font-semibold text-accent">{buffer.toFixed(2)}</div>
+                    <div className="text-[10px] text-slate-400">µL</div>
+                  </div>
+                </div>
+              </div>
+            )
+          }
+          if (c1 > 0 && c2 > 0 && c1 < c2) {
+            return <div className="bg-red-50 rounded-xl p-3 text-center"><p className="text-sm text-red-500">C₁ must be ≥ C₂</p></div>
+          }
+          return null
+        })()}
       </div>
 
       {/* Epsilon Library Modal */}

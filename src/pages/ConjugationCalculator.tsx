@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, Plus, Trash2, Copy, Save, Download, FlaskConical, Droplets, Atom } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Copy, Save, Download, FlaskConical, Droplets, Atom, BookOpen } from 'lucide-react'
 import type { Project } from '../db'
 
 interface Construct {
@@ -81,6 +81,17 @@ export default function ConjugationCalculator() {
   const [dilC2, setDilC2] = useState('')
   const [dilV2, setDilV2] = useState('')
 
+  // Epsilon library
+  const [showEpsLibrary, setShowEpsLibrary] = useState(false)
+  interface EpsEntry { id: string; name: string; epsilon280: string; epsilon260: string; epsilonMass: string; mw: string }
+  const [epsLibrary, setEpsLibrary] = useState<EpsEntry[]>([])
+  const [showAddEps, setShowAddEps] = useState(false)
+  const [newEName, setNewEName] = useState('')
+  const [newE280, setNewE280] = useState('')
+  const [newE260, setNewE260] = useState('')
+  const [newEMass, setNewEMass] = useState('')
+  const [newEMW, setNewEMW] = useState('')
+
   // Load projects for "Save to Project" picker
   useEffect(() => {
     if (!user) return
@@ -99,6 +110,43 @@ export default function ConjugationCalculator() {
     })
     return unsub
   }, [user])
+
+  // Epsilon library listener
+  useEffect(() => {
+    if (!user) return
+    const q = query(
+      collection(firestore, 'users', user.uid, 'epsilonLibrary'),
+      orderBy('createdAt', 'desc')
+    )
+    const unsub = onSnapshot(q, (snap) => {
+      setEpsLibrary(snap.docs.map(d => {
+        const data = d.data()
+        return {
+          id: d.id, name: data.name,
+          epsilon280: data.epsilon280 || '', epsilon260: data.epsilon260 || '',
+          epsilonMass: data.epsilonMass || '', mw: data.mw || '',
+        }
+      }))
+    })
+    return unsub
+  }, [user])
+
+  async function addEpsEntry() {
+    if (!newEName.trim() || !user) return
+    await addDoc(collection(firestore, 'users', user.uid, 'epsilonLibrary'), {
+      name: newEName.trim(), epsilon280: newE280.trim(), epsilon260: newE260.trim(),
+      epsilonMass: newEMass.trim(), mw: newEMW.trim(), createdAt: Timestamp.now(),
+    })
+    setNewEName(''); setNewE280(''); setNewE260(''); setNewEMass(''); setNewEMW('')
+    setShowAddEps(false)
+  }
+
+  function useEpsEntry(entry: { epsilon280: string; epsilonMass: string; mw: string }) {
+    // Fill the protein tab A280 and conjugate calculator
+    if (entry.epsilon280) { setPEpsilon(entry.epsilon280); setConjProtE280(entry.epsilon280) }
+    if (entry.mw) { setPMW(entry.mw); setConjProtMW(entry.mw) }
+    setShowEpsLibrary(false)
+  }
 
   function calc(c: Construct) {
     const pConc = parseFloat(c.proteinConc) || 0
@@ -335,6 +383,20 @@ export default function ConjugationCalculator() {
       {/* Tools Tab */}
       {activeTab === 'tools' && (
         <div className="space-y-4">
+          {/* ε Library button */}
+          <button
+            onClick={() => setShowEpsLibrary(true)}
+            className="w-full flex items-center gap-3 bg-white rounded-2xl p-3 shadow-sm border border-slate-200 hover:border-primary-light hover:shadow-md transition-all"
+          >
+            <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center">
+              <BookOpen className="w-5 h-5 text-primary" />
+            </div>
+            <div className="flex-1 text-left">
+              <span className="font-medium text-slate-900 text-sm">ε Library</span>
+              <p className="text-xs text-slate-400">Browse & manage extinction coefficients</p>
+            </div>
+          </button>
+
           {/* Mass → Concentration */}
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
             <h2 className="text-xs font-bold text-primary uppercase tracking-wide mb-3">Mass → Concentration</h2>
@@ -1060,6 +1122,95 @@ export default function ConjugationCalculator() {
       )}
 
       </>}
+
+      {/* Epsilon Library Modal */}
+      {showEpsLibrary && (
+        <div
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={() => setShowEpsLibrary(false)}
+        >
+          <div className="bg-white rounded-2xl p-5 w-full max-w-md shadow-xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-slate-900">ε Library</h2>
+              <button onClick={() => setShowAddEps(true)} className="flex items-center gap-1 px-3 py-1.5 text-sm bg-accent text-white rounded-lg hover:bg-accent-dark transition-colors">
+                <Plus className="w-3.5 h-3.5" /> Add
+              </button>
+            </div>
+
+            {showAddEps && (
+              <div className="bg-slate-50 rounded-xl p-3 mb-3">
+                <input type="text" value={newEName} onChange={e => setNewEName(e.target.value)} placeholder="Name (e.g. IgG, Her2-ADC)" autoFocus
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div>
+                    <label className="text-[10px] text-slate-400">ε₂₈₀ (M⁻¹cm⁻¹)</label>
+                    <input type="number" value={newE280} onChange={e => setNewE280(e.target.value)} placeholder="e.g. 210000"
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400">ε₂₆₀ (M⁻¹cm⁻¹)</label>
+                    <input type="number" value={newE260} onChange={e => setNewE260(e.target.value)} placeholder="e.g. 120000"
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div>
+                    <label className="text-[10px] text-slate-400">ε (mg/mL)⁻¹cm⁻¹</label>
+                    <input type="number" value={newEMass} onChange={e => setNewEMass(e.target.value)} placeholder="e.g. 1.4" step="0.01"
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400">MW (Da)</label>
+                    <input type="number" value={newEMW} onChange={e => setNewEMW(e.target.value)} placeholder="e.g. 150000"
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={addEpsEntry} disabled={!newEName.trim()} className="flex-1 bg-primary text-white py-2 rounded-lg text-sm font-medium hover:bg-primary-dark transition-colors disabled:opacity-40">Save</button>
+                  <button onClick={() => { setShowAddEps(false); setNewEName(''); setNewE280(''); setNewE260(''); setNewEMass(''); setNewEMW('') }}
+                    className="px-3 py-2 text-slate-600 bg-slate-100 rounded-lg text-sm hover:bg-slate-200 transition-colors">Cancel</button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto space-y-2">
+              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Reference Values</div>
+              {[
+                { name: 'IgG antibody', epsilon280: '210000', epsilon260: '120000', epsilonMass: '1.4', mw: '150000' },
+                { name: '20bp ssDNA oligo', epsilon280: '100000', epsilon260: '200000', epsilonMass: '15', mw: '6600' },
+              ].map(ref => (
+                <div key={ref.name} onClick={() => useEpsEntry(ref)} className="flex items-center justify-between bg-slate-50 rounded-xl p-3 cursor-pointer hover:bg-blue-50 transition-colors">
+                  <div>
+                    <div className="text-sm font-medium text-slate-700">{ref.name}</div>
+                    <div className="text-[10px] text-slate-400">ε₂₈₀={Number(ref.epsilon280).toLocaleString()} · ε(mg)={ref.epsilonMass} · MW={Number(ref.mw).toLocaleString()} Da</div>
+                  </div>
+                  <Copy className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />
+                </div>
+              ))}
+              {epsLibrary.length > 0 && (
+                <>
+                  <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-3 mb-1">Your Library</div>
+                  {epsLibrary.map(entry => (
+                    <div key={entry.id} onClick={() => useEpsEntry(entry)} className="flex items-center justify-between bg-slate-50 rounded-xl p-3 cursor-pointer hover:bg-blue-50 transition-colors">
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-slate-700">{entry.name}</div>
+                        <div className="text-[10px] text-slate-400">
+                          {entry.epsilon280 && `ε₂₈₀=${Number(entry.epsilon280).toLocaleString()}`}
+                          {entry.epsilonMass && ` · ε(mg)=${entry.epsilonMass}`}
+                          {entry.mw && ` · MW=${Number(entry.mw).toLocaleString()} Da`}
+                        </div>
+                      </div>
+                      <Trash2 className="w-3.5 h-3.5 text-slate-300 flex-shrink-0 ml-2" />
+                    </div>
+                  ))}
+                </>
+              )}
+              {epsLibrary.length === 0 && <p className="text-xs text-slate-400 text-center py-4">Tap a reference value to use it, or add your own.</p>}
+            </div>
+            <button onClick={() => setShowEpsLibrary(false)} className="mt-4 w-full py-2.5 text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors text-sm">Close</button>
+          </div>
+        </div>
+      )}
 
       {/* Save to Project Modal */}
       {showSaveModal && (
