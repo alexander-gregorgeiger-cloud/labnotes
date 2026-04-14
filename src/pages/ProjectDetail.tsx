@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { doc, collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, Plus, Download, Trash2, Edit3, Check, X, Camera, Image, StickyNote, Palette } from 'lucide-react'
+import { ArrowLeft, Plus, Download, Trash2, Edit3, Check, X, Camera, Image, StickyNote, Palette, FlaskConical } from 'lucide-react'
 
 const NOTE_COLORS = [
   { id: 'red', hex: '#E53935' },
@@ -246,6 +246,13 @@ export default function ProjectDetail() {
           <span>Projects</span>
         </button>
         <div className="flex gap-2">
+          <button
+            onClick={() => navigate(`/protein?projectId=${id}`)}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors"
+            title="Open Protein Calculator"
+          >
+            <FlaskConical className="w-4 h-4" />
+          </button>
           <button
             onClick={() => setShowLegendEditor(!showLegendEditor)}
             className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${
