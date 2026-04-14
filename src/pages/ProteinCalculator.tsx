@@ -1,13 +1,24 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, Timestamp } from 'firebase/firestore'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Trash2, BookOpen, Copy } from 'lucide-react'
 import type { Project } from '../db'
+
+interface EpsilonEntry {
+  id: string
+  name: string
+  epsilon280: string
+  epsilon260: string
+  epsilonMass: string
+  mw: string
+  createdAt: Date
+}
 
 export default function ProteinCalculator() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { user } = useAuth()
 
   const [mode, setMode] = useState<'a280' | 'auc'>('a280')
@@ -33,6 +44,34 @@ export default function ProteinCalculator() {
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [saved, setSaved] = useState(false)
+
+  // Epsilon library
+  const [epsilonLibrary, setEpsilonLibrary] = useState<EpsilonEntry[]>([])
+  const [showLibrary, setShowLibrary] = useState(false)
+  const [showAddEpsilon, setShowAddEpsilon] = useState(false)
+  const [newEpsName, setNewEpsName] = useState('')
+  const [newEps280, setNewEps280] = useState('')
+  const [newEps260, setNewEps260] = useState('')
+  const [newEpsMass, setNewEpsMass] = useState('')
+  const [newEpsMW, setNewEpsMW] = useState('')
+
+  // Pre-fill from URL params (from projects)
+  useEffect(() => {
+    const pAbs = searchParams.get('abs')
+    const pAuc = searchParams.get('auc')
+    const pEps = searchParams.get('epsilon')
+    const pMw = searchParams.get('mw')
+    const pVol = searchParams.get('vol')
+    const pMode = searchParams.get('mode')
+    const pProjectId = searchParams.get('projectId')
+    if (pMode === 'auc') { setMode('auc'); setPath('0.2') }
+    if (pAbs) setAbs(pAbs)
+    if (pAuc) setAuc(pAuc)
+    if (pEps) setEpsilon(pEps)
+    if (pMw) setMw(pMw)
+    if (pVol) setVol(pVol)
+    if (pProjectId) setSelectedProjectId(pProjectId)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const absVal = parseFloat(abs) || 0
   const aucVal = parseFloat(auc) || 0
@@ -104,6 +143,64 @@ export default function ProteinCalculator() {
     return unsub
   }, [user])
 
+  // Epsilon library listener
+  useEffect(() => {
+    if (!user) return
+    const q = query(
+      collection(firestore, 'users', user.uid, 'epsilonLibrary'),
+      orderBy('createdAt', 'desc')
+    )
+    const unsub = onSnapshot(q, (snap) => {
+      setEpsilonLibrary(snap.docs.map(d => {
+        const data = d.data()
+        return {
+          id: d.id,
+          name: data.name,
+          epsilon280: data.epsilon280 || '',
+          epsilon260: data.epsilon260 || '',
+          epsilonMass: data.epsilonMass || '',
+          mw: data.mw || '',
+          createdAt: data.createdAt?.toDate() || new Date(),
+        }
+      }))
+    })
+    return unsub
+  }, [user])
+
+  async function addEpsilonEntry() {
+    if (!newEpsName.trim() || !user) return
+    const now = Timestamp.now()
+    await addDoc(collection(firestore, 'users', user.uid, 'epsilonLibrary'), {
+      name: newEpsName.trim(),
+      epsilon280: newEps280.trim(),
+      epsilon260: newEps260.trim(),
+      epsilonMass: newEpsMass.trim(),
+      mw: newEpsMW.trim(),
+      createdAt: now,
+    })
+    setNewEpsName(''); setNewEps280(''); setNewEps260(''); setNewEpsMass(''); setNewEpsMW('')
+    setShowAddEpsilon(false)
+  }
+
+  async function deleteEpsilonEntry(entryId: string) {
+    if (!user || !confirm('Delete this entry?')) return
+    await deleteDoc(doc(firestore, 'users', user.uid, 'epsilonLibrary', entryId))
+  }
+
+  function useEpsilonEntry(entry: EpsilonEntry) {
+    if (epsMode === 'mass' && entry.epsilonMass) {
+      setEpsilon(entry.epsilonMass)
+    } else if (entry.epsilon280) {
+      setEpsilon(entry.epsilon280)
+      if (epsMode === 'mass') setEpsMode('molar')
+    }
+    if (entry.mw) {
+      setMw(entry.mw)
+      setMwUnit('da')
+    }
+    setShowLibrary(false)
+  }
+
   function buildText(): string {
     let text = `Protein Calculator Results (${mode === 'auc' ? 'AUC/ÄKTA' : 'A280'})\n`
     text += `Date: ${new Date().toLocaleDateString()}\n\n`
@@ -139,6 +236,9 @@ export default function ProteinCalculator() {
         if (massMg > 0) text += `m = ${mG.toExponential(3)} g (${mUg.toFixed(1)} µg)\n`
       }
     }
+    text += `\n── Reference ε Values ──\n`
+    text += `IgG: ε₂₈₀=210,000 M⁻¹cm⁻¹ | ε(mg)=1.4 | MW=150,000 Da\n`
+    text += `20bp ssDNA oligo: ε₂₈₀≈100,000 M⁻¹cm⁻¹ | ε(mg)≈15 | MW≈6,600 Da\n`
     return text
   }
 
@@ -249,6 +349,13 @@ export default function ProteinCalculator() {
                   (mg/mL)⁻¹cm⁻¹
                 </button>
               </div>
+              <button
+                onClick={() => setShowLibrary(true)}
+                className="ml-auto p-1 text-slate-400 hover:text-primary hover:bg-blue-50 rounded-md transition-colors"
+                title="ε Library"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+              </button>
             </div>
             <input
               type="number"
@@ -646,6 +753,157 @@ export default function ProteinCalculator() {
             : <>n = AUC / (ε × l × 10⁶) &nbsp;·&nbsp; m = n × MW</>)
         }
       </div>
+
+      {/* Epsilon Library Modal */}
+      {showLibrary && (
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            zIndex: 99999, backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+          onClick={() => setShowLibrary(false)}
+        >
+          <div
+            className="bg-white rounded-2xl p-5 w-full max-w-md shadow-xl max-h-[80vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-slate-900">ε Library</h2>
+              <button
+                onClick={() => setShowAddEpsilon(true)}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm bg-accent text-white rounded-lg hover:bg-accent-dark transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add
+              </button>
+            </div>
+
+            {/* Add form */}
+            {showAddEpsilon && (
+              <div className="bg-slate-50 rounded-xl p-3 mb-3">
+                <input
+                  type="text"
+                  value={newEpsName}
+                  onChange={e => setNewEpsName(e.target.value)}
+                  placeholder="Name (e.g. IgG, Her2-ADC)"
+                  autoFocus
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div>
+                    <label className="text-[10px] text-slate-400">ε₂₈₀ (M⁻¹cm⁻¹)</label>
+                    <input type="number" value={newEps280} onChange={e => setNewEps280(e.target.value)}
+                      placeholder="e.g. 210000"
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400">ε₂₆₀ (M⁻¹cm⁻¹)</label>
+                    <input type="number" value={newEps260} onChange={e => setNewEps260(e.target.value)}
+                      placeholder="e.g. 120000"
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div>
+                    <label className="text-[10px] text-slate-400">ε (mg/mL)⁻¹cm⁻¹</label>
+                    <input type="number" value={newEpsMass} onChange={e => setNewEpsMass(e.target.value)}
+                      placeholder="e.g. 1.4"
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                      step="0.01" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400">MW (Da)</label>
+                    <input type="number" value={newEpsMW} onChange={e => setNewEpsMW(e.target.value)}
+                      placeholder="e.g. 150000"
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={addEpsilonEntry}
+                    disabled={!newEpsName.trim()}
+                    className="flex-1 bg-primary text-white py-2 rounded-lg text-sm font-medium hover:bg-primary-dark transition-colors disabled:opacity-40"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => { setShowAddEpsilon(false); setNewEpsName(''); setNewEps280(''); setNewEps260(''); setNewEpsMass(''); setNewEpsMW('') }}
+                    className="px-3 py-2 text-slate-600 bg-slate-100 rounded-lg text-sm hover:bg-slate-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Library entries */}
+            <div className="flex-1 overflow-y-auto space-y-2">
+              {/* Built-in reference values */}
+              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Reference Values</div>
+              {[
+                { name: 'IgG antibody', epsilon280: '210000', epsilon260: '120000', epsilonMass: '1.4', mw: '150000' },
+                { name: '20bp ssDNA oligo', epsilon280: '100000', epsilon260: '200000', epsilonMass: '15', mw: '6600' },
+              ].map((ref) => (
+                <div
+                  key={ref.name}
+                  onClick={() => useEpsilonEntry({ ...ref, id: '', createdAt: new Date() })}
+                  className="flex items-center justify-between bg-slate-50 rounded-xl p-3 cursor-pointer hover:bg-blue-50 transition-colors"
+                >
+                  <div>
+                    <div className="text-sm font-medium text-slate-700">{ref.name}</div>
+                    <div className="text-[10px] text-slate-400">
+                      ε₂₈₀={Number(ref.epsilon280).toLocaleString()} · ε(mg)={ref.epsilonMass} · MW={Number(ref.mw).toLocaleString()} Da
+                    </div>
+                  </div>
+                  <Copy className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />
+                </div>
+              ))}
+
+              {/* User entries */}
+              {epsilonLibrary.length > 0 && (
+                <>
+                  <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-3 mb-1">Your Library</div>
+                  {epsilonLibrary.map(entry => (
+                    <div
+                      key={entry.id}
+                      className="flex items-center justify-between bg-slate-50 rounded-xl p-3 cursor-pointer hover:bg-blue-50 transition-colors"
+                    >
+                      <div onClick={() => useEpsilonEntry(entry)} className="flex-1">
+                        <div className="text-sm font-medium text-slate-700">{entry.name}</div>
+                        <div className="text-[10px] text-slate-400">
+                          {entry.epsilon280 && `ε₂₈₀=${Number(entry.epsilon280).toLocaleString()}`}
+                          {entry.epsilonMass && ` · ε(mg)=${entry.epsilonMass}`}
+                          {entry.mw && ` · MW=${Number(entry.mw).toLocaleString()} Da`}
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deleteEpsilonEntry(entry.id) }}
+                        className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {epsilonLibrary.length === 0 && (
+                <p className="text-xs text-slate-400 text-center py-4">
+                  Tap a reference value to use it, or add your own.
+                </p>
+              )}
+            </div>
+
+            <button
+              onClick={() => setShowLibrary(false)}
+              className="mt-4 w-full py-2.5 text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors text-sm"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Save to Project Modal */}
       {showSaveModal && (

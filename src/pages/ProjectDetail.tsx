@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { doc, collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, Plus, Download, Trash2, Edit3, Check, X, Camera, Image, StickyNote } from 'lucide-react'
+import { ArrowLeft, Plus, Download, Trash2, Edit3, Check, X, Camera, Image, StickyNote, FlaskConical } from 'lucide-react'
 import { exportProject } from '../export'
 import type { Project, Note } from '../db'
 
@@ -208,13 +208,23 @@ export default function ProjectDetail() {
           <ArrowLeft className="w-5 h-5" />
           <span>Projects</span>
         </button>
-        <button
-          onClick={handleExport}
-          className="flex items-center gap-2 px-3 py-2 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
-        >
-          <Download className="w-4 h-4" />
-          <span>Export</span>
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => navigate(`/protein?projectId=${id}`)}
+            className="flex items-center gap-2 px-3 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors"
+            title="Open Protein Calculator"
+          >
+            <FlaskConical className="w-4 h-4" />
+            <span>Calculate</span>
+          </button>
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 px-3 py-2 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            <span>Export</span>
+          </button>
+        </div>
       </div>
 
       {/* Project Info */}
