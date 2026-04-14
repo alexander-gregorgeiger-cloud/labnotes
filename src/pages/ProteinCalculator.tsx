@@ -21,7 +21,7 @@ export default function ProteinCalculator() {
   const [searchParams] = useSearchParams()
   const { user } = useAuth()
 
-  const [mode, setMode] = useState<'a280' | 'auc'>('a280')
+  const [mode, setMode] = useState<'a280' | 'auc' | 'dilution'>('a280')
   const [epsMode, setEpsMode] = useState<'molar' | 'mass'>('molar')
   const [abs, setAbs] = useState('')
   const [auc, setAuc] = useState('')     // mAU·mL
@@ -75,7 +75,9 @@ export default function ProteinCalculator() {
 
   const hasResult = mode === 'a280'
     ? absVal > 0 && epsVal > 0
-    : aucVal > 0 && epsVal > 0
+    : mode === 'auc'
+    ? aucVal > 0 && epsVal > 0
+    : (parseFloat(dilC1) || 0) > 0 && (parseFloat(dilC2) || 0) > 0 && (parseFloat(dilV2) || 0) > 0
   const hasVol = volVal > 0
   const hasMW = mwVal > 0
   const isMass = epsMode === 'mass'
@@ -194,6 +196,18 @@ export default function ProteinCalculator() {
   }
 
   function buildText(): string {
+    if (mode === 'dilution') {
+      const c1 = parseFloat(dilC1) || 0
+      const c2 = parseFloat(dilC2) || 0
+      const v2 = parseFloat(dilV2) || 0
+      const v1 = c1 > 0 ? (c2 * v2) / c1 : 0
+      const buffer = v2 - v1
+      let text = `Dilution (C₁V₁ = C₂V₂)\nDate: ${new Date().toLocaleDateString()}\n\n`
+      text += `C₁ = ${c1} µM, C₂ = ${c2} µM, V₂ = ${v2} µL\n`
+      text += `V₁ (stock) = ${v1.toFixed(2)} µL\n`
+      text += `Buffer = ${buffer.toFixed(2)} µL\n`
+      return text
+    }
     let text = `Protein Calculator Results (${mode === 'auc' ? 'AUC/ÄKTA' : 'A280'})\n`
     text += `Date: ${new Date().toLocaleDateString()}\n\n`
     text += `── Parameters ──\n`
@@ -285,9 +299,18 @@ export default function ProteinCalculator() {
         >
           AUC (ÄKTA)
         </button>
+        <button
+          onClick={() => setMode('dilution')}
+          className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+            mode === 'dilution' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Dilution
+        </button>
       </div>
 
-      {/* Inputs */}
+      {/* A280 / AUC content */}
+      {mode !== 'dilution' && (<>
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 mb-4">
         <h2 className="text-xs font-bold text-primary uppercase tracking-wide mb-3">Parameters</h2>
         <div className="grid grid-cols-2 gap-3 mb-3">
@@ -742,9 +765,11 @@ export default function ProteinCalculator() {
             : <>n = AUC / (ε × l × 10⁶) &nbsp;·&nbsp; m = n × MW</>)
         }
       </div>
+      </>)}
 
-      {/* Dilution Calculator */}
-      <div className="mt-4 bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+      {/* Dilution mode */}
+      {mode === 'dilution' && (
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 mb-4">
         <h2 className="text-xs font-bold text-primary uppercase tracking-wide mb-3">Dilution (C₁V₁ = C₂V₂)</h2>
         <div className="grid grid-cols-3 gap-2 mb-3">
           <div>
@@ -792,7 +817,13 @@ export default function ProteinCalculator() {
           }
           return null
         })()}
+
+        {/* Dilution formula */}
+        <div className="mt-3 text-xs text-slate-400 text-center">
+          V₁ = (C₂ × V₂) / C₁ &nbsp;·&nbsp; Buffer = V₂ − V₁
+        </div>
       </div>
+      )}
 
       {/* Epsilon Library Modal */}
       {showLibrary && (
