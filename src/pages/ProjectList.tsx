@@ -6,6 +6,7 @@ import { firestore, auth } from '../firebase'
 import { useAuth } from '../AuthContext'
 import { Plus, FlaskConical, Trash2, FolderOpen, LogOut, Calculator, Lightbulb, StickyNote, ChevronRight, LayoutGrid, BookOpen, RefreshCw } from 'lucide-react'
 import type { Project } from '../db'
+import BeaverLogo from '../components/BeaverLogo'
 
 export default function ProjectList() {
   const [showForm, setShowForm] = useState(false)
@@ -116,9 +117,7 @@ export default function ProjectList() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
-            <FlaskConical className="w-6 h-6 text-white" />
-          </div>
+          <BeaverLogo size={44} />
           <div>
             <h1 className="text-2xl font-bold text-slate-900">LabNotes</h1>
             <p className="text-sm text-slate-500">Your digital lab notebook</p>
