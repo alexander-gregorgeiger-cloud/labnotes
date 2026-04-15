@@ -32,18 +32,31 @@ function calcMW(seq: string): number {
   return mw
 }
 
-// pI calculation using bisection (pKa values from ExPASy ProtParam / Bjellqvist et al.)
-const PK_CTERM = 3.55
-const PK_NTERM = 8.00
+// pI calculation using bisection (Bjellqvist et al. 1993/1994, same as ExPASy ProtParam)
+// N-terminal pKa depends on which amino acid is at the N-terminus
+const PK_NTERM: Record<string, number> = {
+  A: 7.59, R: 7.50, N: 7.50, D: 7.50, C: 8.00, E: 7.70, Q: 7.50, G: 7.50,
+  H: 7.50, I: 7.50, L: 7.50, K: 7.50, M: 7.00, F: 7.50, P: 8.36, S: 6.93,
+  T: 6.82, W: 7.50, Y: 7.50, V: 7.44,
+}
+// C-terminal pKa depends on which amino acid is at the C-terminus
+const PK_CTERM: Record<string, number> = {
+  D: 4.55, E: 4.75, // acidic C-termini have higher pKa
+}
+const PK_CTERM_DEFAULT = 3.55
 const PK_SIDE: Record<string, number> = {
   D: 4.05, E: 4.45, C: 9.00, Y: 10.00, H: 5.98, K: 10.00, R: 12.00,
 }
 
 function chargeAtPH(seq: string, pH: number): number {
+  const nTermAA = seq[0]
+  const cTermAA = seq[seq.length - 1]
+  const pkNterm = PK_NTERM[nTermAA] ?? 7.50
+  const pkCterm = PK_CTERM[cTermAA] ?? PK_CTERM_DEFAULT
   // N-terminus (positive)
-  let charge = 1 / (1 + Math.pow(10, pH - PK_NTERM))
+  let charge = 1 / (1 + Math.pow(10, pH - pkNterm))
   // C-terminus (negative)
-  charge -= 1 / (1 + Math.pow(10, PK_CTERM - pH))
+  charge -= 1 / (1 + Math.pow(10, pkCterm - pH))
   // Side chains
   for (const aa of seq) {
     const pk = PK_SIDE[aa]
