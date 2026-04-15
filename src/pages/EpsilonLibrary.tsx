@@ -32,11 +32,11 @@ function calcMW(seq: string): number {
   return mw
 }
 
-// pI calculation using bisection
-const PK_CTERM = 2.34
-const PK_NTERM = 9.69
+// pI calculation using bisection (pKa values from ExPASy ProtParam / Bjellqvist et al.)
+const PK_CTERM = 3.55
+const PK_NTERM = 8.00
 const PK_SIDE: Record<string, number> = {
-  D: 3.65, E: 4.25, C: 8.18, Y: 10.07, H: 6.00, K: 10.53, R: 12.48,
+  D: 4.05, E: 4.45, C: 9.00, Y: 10.00, H: 5.98, K: 10.00, R: 12.00,
 }
 
 function chargeAtPH(seq: string, pH: number): number {
@@ -241,7 +241,7 @@ export default function EpsilonLibrary() {
               const ssOverride = numSS !== '' ? parseInt(numSS) || 0 : null
               const nSS = ssOverride !== null ? ssOverride : Math.floor(nC / 2)
               const eps280 = eps.reduced + nSS * 125
-              const epsMass = mw > 0 ? eps280 / mw * 1000 : 0
+              const abs01pct = mw > 0 ? eps280 / mw : 0  // Abs 0.1% (=1 g/L)
               const pi = calcPI(cleaned)
               const nW = (cleaned.match(/W/g) || []).length
               const nY = (cleaned.match(/Y/g) || []).length
@@ -267,8 +267,8 @@ export default function EpsilonLibrary() {
                         <div className="text-[10px] text-slate-400">ε₂₈₀ (M⁻¹cm⁻¹)</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-lg font-bold text-accent">{epsMass.toFixed(2)}</div>
-                        <div className="text-[10px] text-slate-400">ε₂₈₀ (mg)</div>
+                        <div className="text-lg font-bold text-accent">{abs01pct.toFixed(3)}</div>
+                        <div className="text-[10px] text-slate-400">Abs 0.1% (1 g/L)</div>
                       </div>
                       <div className="text-center">
                         <div className="text-lg font-bold text-accent">{pi.toFixed(2)}</div>
@@ -305,8 +305,9 @@ export default function EpsilonLibrary() {
                         name: seqName.trim(),
                         epsilon280: String(eps280),
                         epsilon260: '',
-                        epsilonMass: epsMass.toFixed(2),
+                        epsilonMass: abs01pct.toFixed(3),
                         mw: String(Math.round(mw)),
+                        pI: pi.toFixed(2),
                         createdAt: Timestamp.now(),
                       })
                       setSeqInput('')
