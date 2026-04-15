@@ -55,6 +55,38 @@ export async function exportProject(project: Project, notes: Note[]) {
     )
   }
 
+  // Color Legend
+  if (project.colorLegend) {
+    const legendOrder = [
+      '#E53935', '#D4A574', '#FFEE58', '#42A5F5',
+      '#EC407A', '#FFA726', '#AB47BC', '#9CCC65',
+    ]
+    const entries = legendOrder
+      .filter(hex => project.colorLegend?.[hex])
+      .map(hex => ({ hex, label: project.colorLegend![hex] }))
+
+    if (entries.length > 0) {
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: 'Color Legend', size: 20, bold: true, color: '312783' })],
+          spacing: { before: 80 },
+        })
+      )
+      for (let i = 0; i < entries.length; i += 2) {
+        const runs: TextRun[] = []
+        runs.push(new TextRun({ text: '● ', size: 22, color: entries[i].hex.replace('#', ''), bold: true }))
+        runs.push(new TextRun({ text: entries[i].label, size: 20, color: '334155' }))
+        if (entries[i + 1]) {
+          runs.push(new TextRun({ text: '          ', size: 20 }))
+          runs.push(new TextRun({ text: '● ', size: 22, color: entries[i + 1].hex.replace('#', ''), bold: true }))
+          runs.push(new TextRun({ text: entries[i + 1].label, size: 20, color: '334155' }))
+        }
+        children.push(new Paragraph({ children: runs }))
+      }
+      children.push(new Paragraph({ spacing: { after: 80 } }))
+    }
+  }
+
   // Meta info
   children.push(
     new Paragraph({
@@ -86,10 +118,15 @@ export async function exportProject(project: Project, notes: Note[]) {
       minute: '2-digit',
     })
 
-    // Timestamp header
+    // Timestamp header (with color dot if tagged)
+    const timestampRuns: TextRun[] = []
+    if (note.color) {
+      timestampRuns.push(new TextRun({ text: '● ', size: 22, color: note.color.replace('#', ''), bold: true }))
+    }
+    timestampRuns.push(new TextRun({ text: timestamp, size: 18, color: 'F39200', bold: true }))
     children.push(
       new Paragraph({
-        children: [new TextRun({ text: timestamp, size: 18, color: 'F39200', bold: true })],
+        children: timestampRuns,
         spacing: { before: 200 },
       })
     )

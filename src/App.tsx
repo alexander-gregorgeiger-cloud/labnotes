@@ -10,6 +10,8 @@ import ProteinCalculator from './pages/ProteinCalculator'
 import MemoList from './pages/MemoList'
 import PanelPlanner from './pages/PanelPlanner'
 import EpsilonLibrary from './pages/EpsilonLibrary'
+import ConjugationRecordList from './pages/ConjugationRecordList'
+import ConjugationRecordDetail from './pages/ConjugationRecordDetail'
 
 export default function App() {
   const { user, loading } = useAuth()
@@ -37,6 +39,8 @@ export default function App() {
       <Route path="/memos" element={<MemoList />} />
       <Route path="/panel-planner" element={<PanelPlanner />} />
       <Route path="/epsilon-library" element={<EpsilonLibrary />} />
+      <Route path="/records" element={<ConjugationRecordList />} />
+      <Route path="/record/:id" element={<ConjugationRecordDetail />} />
     </Routes>
   )
 }

@@ -36,6 +36,16 @@ export interface Idea {
   updatedAt: Date
 }
 
+export interface ConjugationRecordMeta {
+  id: string
+  name: string
+  preparedBy: string
+  dateStarted: string
+  tubeCount: number
+  createdAt: Date
+  updatedAt: Date
+}
+
 export interface Memo {
   id: string
   content: string

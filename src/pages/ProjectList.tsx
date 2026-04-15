@@ -4,7 +4,7 @@ import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, getDocs
 import { signOut } from 'firebase/auth'
 import { firestore, auth } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { Plus, FlaskConical, Trash2, FolderOpen, LogOut, Calculator, Lightbulb, StickyNote, ChevronRight, LayoutGrid, BookOpen, RefreshCw } from 'lucide-react'
+import { Plus, FlaskConical, Trash2, FolderOpen, LogOut, Calculator, Lightbulb, StickyNote, ChevronRight, LayoutGrid, BookOpen, RefreshCw, ClipboardList } from 'lucide-react'
 import type { Project } from '../db'
 import BeaverLogo from '../components/BeaverLogo'
 
@@ -151,6 +151,19 @@ export default function ProjectList() {
           <div className="flex-1">
             <span className="font-medium text-slate-900 text-sm">Experimental Planning</span>
             <p className="text-xs text-slate-400">Plan experiments & collect ideas</p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-300" />
+        </div>
+        <div
+          onClick={() => navigate('/records')}
+          className="flex items-center gap-3 bg-white rounded-2xl p-3 shadow-sm border border-slate-200 hover:border-primary-light hover:shadow-md transition-all cursor-pointer"
+        >
+          <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center">
+            <ClipboardList className="w-5 h-5 text-primary" />
+          </div>
+          <div className="flex-1">
+            <span className="font-medium text-slate-900 text-sm">Conjugation Records</span>
+            <p className="text-xs text-slate-400">Adapter conjugation batch records</p>
           </div>
           <ChevronRight className="w-4 h-4 text-slate-300" />
         </div>
