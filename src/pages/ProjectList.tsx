@@ -104,7 +104,7 @@ export default function ProjectList() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <BeaverLogo size={44} />
+          <BeaverLogo size={56} />
           <div>
             <h1 className="text-2xl font-bold text-slate-900">LabNotes</h1>
             <p className="text-sm text-slate-500">Your digital lab notebook</p>
