@@ -23,30 +23,17 @@ export default function ProjectList() {
     setUpdating(true)
     setUpdateStatus('checking')
     try {
-      const reg = await navigator.serviceWorker?.getRegistration()
-      if (reg) {
-        await reg.update()
-        // Wait briefly for the SW to detect a new version
-        await new Promise(r => setTimeout(r, 1500))
-        if (reg.waiting) {
-          // New version found — activate it and reload
-          setUpdateStatus('found')
-          reg.waiting.postMessage({ type: 'SKIP_WAITING' })
-          await new Promise(r => setTimeout(r, 500))
-          window.location.reload()
-        } else {
-          setUpdateStatus('current')
-          setTimeout(() => setUpdateStatus('idle'), 2000)
-        }
-      } else {
-        // No service worker — just hard reload
-        window.location.reload()
+      // Unregister service worker and clear all caches, then reload
+      const regs = await navigator.serviceWorker?.getRegistrations()
+      if (regs) {
+        for (const reg of regs) await reg.unregister()
       }
-    } catch {
-      // Fallback: hard reload
+      const cacheNames = await caches.keys()
+      for (const name of cacheNames) await caches.delete(name)
+      // Hard reload bypassing cache
       window.location.reload()
-    } finally {
-      setUpdating(false)
+    } catch {
+      window.location.reload()
     }
   }
 
