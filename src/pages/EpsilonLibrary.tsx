@@ -3,7 +3,83 @@ import { useNavigate } from 'react-router-dom'
 import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, Plus, Trash2, Copy } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Copy, Calculator, Save, ChevronDown, ChevronUp } from 'lucide-react'
+
+// --- Amino acid data for ProtParam-like calculations ---
+const AA_MW: Record<string, number> = {
+  A: 71.03711, R: 156.10111, N: 114.04293, D: 115.02694, C: 103.00919,
+  E: 129.04259, Q: 128.05858, G: 57.02146, H: 137.05891, I: 113.08406,
+  L: 113.08406, K: 128.09496, M: 131.04049, F: 147.06841, P: 97.05276,
+  S: 87.03203, T: 101.04768, W: 186.07931, Y: 163.06333, V: 99.06841,
+}
+const WATER_MASS = 18.01056
+
+// Extinction coefficient at 280nm (Pace et al. 1995)
+function calcEpsilon280(seq: string): { reduced: number; oxidized: number } {
+  const nW = (seq.match(/W/g) || []).length
+  const nY = (seq.match(/Y/g) || []).length
+  const nC = (seq.match(/C/g) || []).length
+  const reduced = nW * 5500 + nY * 1490
+  const oxidized = reduced + Math.floor(nC / 2) * 125
+  return { reduced, oxidized }
+}
+
+function calcMW(seq: string): number {
+  let mw = WATER_MASS
+  for (const aa of seq) {
+    mw += AA_MW[aa] || 0
+  }
+  return mw
+}
+
+// pI calculation using bisection
+const PK_CTERM = 2.34
+const PK_NTERM = 9.69
+const PK_SIDE: Record<string, number> = {
+  D: 3.65, E: 4.25, C: 8.18, Y: 10.07, H: 6.00, K: 10.53, R: 12.48,
+}
+
+function chargeAtPH(seq: string, pH: number): number {
+  // N-terminus (positive)
+  let charge = 1 / (1 + Math.pow(10, pH - PK_NTERM))
+  // C-terminus (negative)
+  charge -= 1 / (1 + Math.pow(10, PK_CTERM - pH))
+  // Side chains
+  for (const aa of seq) {
+    const pk = PK_SIDE[aa]
+    if (pk === undefined) continue
+    if (aa === 'D' || aa === 'E' || aa === 'C' || aa === 'Y') {
+      // Acidic: negative at high pH
+      charge -= 1 / (1 + Math.pow(10, pk - pH))
+    } else {
+      // Basic: positive at low pH
+      charge += 1 / (1 + Math.pow(10, pH - pk))
+    }
+  }
+  return charge
+}
+
+function calcPI(seq: string): number {
+  let lo = 0, hi = 14
+  for (let i = 0; i < 100; i++) {
+    const mid = (lo + hi) / 2
+    const c = chargeAtPH(seq, mid)
+    if (c > 0) lo = mid
+    else hi = mid
+    if (Math.abs(c) < 0.001) break
+  }
+  return (lo + hi) / 2
+}
+
+function getAAComposition(seq: string): { aa: string; count: number; pct: number }[] {
+  const counts: Record<string, number> = {}
+  for (const aa of seq) {
+    counts[aa] = (counts[aa] || 0) + 1
+  }
+  return Object.entries(counts)
+    .sort(([, a], [, b]) => b - a)
+    .map(([aa, count]) => ({ aa, count, pct: (count / seq.length) * 100 }))
+}
 
 interface EpsilonEntry {
   id: string
@@ -26,6 +102,10 @@ export default function EpsilonLibrary() {
 
   const [entries, setEntries] = useState<EpsilonEntry[]>([])
   const [showAdd, setShowAdd] = useState(false)
+  const [showCalc, setShowCalc] = useState(false)
+  const [seqInput, setSeqInput] = useState('')
+  const [seqName, setSeqName] = useState('')
+  const [numSS, setNumSS] = useState('') // number of disulfide bonds (override)
   const [newName, setNewName] = useState('')
   const [newE280, setNewE280] = useState('')
   const [newE260, setNewE260] = useState('')
@@ -103,6 +183,147 @@ export default function EpsilonLibrary() {
 
       <h1 className="text-2xl font-bold text-slate-900 mb-1">ε Library</h1>
       <p className="text-sm text-slate-500 mb-4">Extinction coefficients & molecular weights</p>
+
+      {/* Sequence Calculator */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 mb-4 overflow-hidden">
+        <button
+          onClick={() => setShowCalc(!showCalc)}
+          className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center">
+              <Calculator className="w-5 h-5 text-primary" />
+            </div>
+            <div className="text-left">
+              <span className="font-medium text-slate-900 text-sm">Sequence → Properties</span>
+              <p className="text-xs text-slate-400">Compute MW, ε₂₈₀, pI from amino acid sequence</p>
+            </div>
+          </div>
+          {showCalc ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+        </button>
+
+        {showCalc && (
+          <div className="px-4 pb-4 border-t border-slate-100 pt-3">
+            <input
+              type="text"
+              value={seqName}
+              onChange={e => setSeqName(e.target.value)}
+              placeholder="Protein name (e.g. Trastuzumab HC)"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-primary-light"
+            />
+            <textarea
+              value={seqInput}
+              onChange={e => setSeqInput(e.target.value)}
+              placeholder="Paste amino acid sequence (one-letter code)&#10;e.g. MVLSPADKTNVKAAW..."
+              rows={4}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-primary-light font-mono resize-none"
+            />
+            <div className="flex items-center gap-2 mb-3">
+              <label className="text-xs text-slate-400">Disulfide bonds (optional)</label>
+              <input
+                type="number"
+                value={numSS}
+                onChange={e => setNumSS(e.target.value)}
+                placeholder="auto"
+                min="0"
+                className="w-20 px-2 py-1 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-primary-light"
+              />
+            </div>
+
+            {/* Results */}
+            {(() => {
+              const cleaned = seqInput.toUpperCase().replace(/[^ARNDCEQGHILKMFPSTWYV]/g, '')
+              if (cleaned.length < 2) return <p className="text-xs text-slate-400 text-center py-2">Enter at least 2 amino acids to compute properties.</p>
+
+              const mw = calcMW(cleaned)
+              const eps = calcEpsilon280(cleaned)
+              const nC = (cleaned.match(/C/g) || []).length
+              const ssOverride = numSS !== '' ? parseInt(numSS) || 0 : null
+              const nSS = ssOverride !== null ? ssOverride : Math.floor(nC / 2)
+              const eps280 = eps.reduced + nSS * 125
+              const epsMass = mw > 0 ? eps280 / mw * 1000 : 0
+              const pi = calcPI(cleaned)
+              const nW = (cleaned.match(/W/g) || []).length
+              const nY = (cleaned.match(/Y/g) || []).length
+              const composition = getAAComposition(cleaned)
+
+              return (
+                <>
+                  {/* Summary results */}
+                  <div className="bg-slate-50 rounded-xl p-4 mb-3">
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-primary">{mw.toFixed(1)}</div>
+                        <div className="text-[10px] text-slate-400">MW (Da)</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-primary">{(mw / 1000).toFixed(2)}</div>
+                        <div className="text-[10px] text-slate-400">MW (kDa)</div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 mb-3">
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-accent">{eps280.toLocaleString()}</div>
+                        <div className="text-[10px] text-slate-400">ε₂₈₀ (M⁻¹cm⁻¹)</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-accent">{epsMass.toFixed(2)}</div>
+                        <div className="text-[10px] text-slate-400">ε₂₈₀ (mg)</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-accent">{pi.toFixed(2)}</div>
+                        <div className="text-[10px] text-slate-400">pI</div>
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-slate-400 text-center">
+                      {cleaned.length} residues · {nW} Trp · {nY} Tyr · {nC} Cys ({nSS} S-S)
+                    </div>
+                  </div>
+
+                  {/* Composition */}
+                  <details className="mb-3">
+                    <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600">Amino acid composition</summary>
+                    <div className="mt-2 grid grid-cols-4 gap-1 text-[10px]">
+                      {composition.map(({ aa, count, pct }) => (
+                        <div key={aa} className="flex items-center gap-1 bg-slate-50 rounded px-1.5 py-0.5">
+                          <span className="font-mono font-bold text-primary">{aa}</span>
+                          <span className="text-slate-500">{count}</span>
+                          <span className="text-slate-400">({pct.toFixed(1)}%)</span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+
+                  {/* Save to library */}
+                  <button
+                    onClick={async () => {
+                      if (!user || !seqName.trim()) {
+                        alert('Please enter a protein name')
+                        return
+                      }
+                      await addDoc(collection(firestore, 'users', user.uid, 'epsilonLibrary'), {
+                        name: seqName.trim(),
+                        epsilon280: String(eps280),
+                        epsilon260: '',
+                        epsilonMass: epsMass.toFixed(2),
+                        mw: String(Math.round(mw)),
+                        createdAt: Timestamp.now(),
+                      })
+                      setSeqInput('')
+                      setSeqName('')
+                      setNumSS('')
+                    }}
+                    className="w-full flex items-center justify-center gap-2 bg-primary text-white py-2.5 rounded-lg font-medium hover:bg-primary-dark transition-colors"
+                  >
+                    <Save className="w-4 h-4" />
+                    Save to Library
+                  </button>
+                </>
+              )
+            })()}
+          </div>
+        )}
+      </div>
 
       {/* Add form */}
       {showAdd && (
