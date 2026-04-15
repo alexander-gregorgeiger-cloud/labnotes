@@ -276,7 +276,7 @@ export default function EpsilonLibrary() {
                     </div>
                     <div className="grid grid-cols-3 gap-3 mb-3">
                       <div className="text-center">
-                        <div className="text-lg font-bold text-accent">{eps280.toLocaleString('en-US')}</div>
+                        <div className="text-lg font-bold text-accent">{eps280.toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'")}</div>
                         <div className="text-[10px] text-slate-400">ε₂₈₀ (M⁻¹cm⁻¹)</div>
                       </div>
                       <div className="text-center">
