@@ -4,7 +4,7 @@ import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, getDocs
 import { signOut } from 'firebase/auth'
 import { firestore, auth } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { Plus, FlaskConical, Trash2, FolderOpen, LogOut, Calculator, Lightbulb, StickyNote, ChevronRight, LayoutGrid, BookOpen } from 'lucide-react'
+import { Plus, FlaskConical, Trash2, FolderOpen, LogOut, Calculator, Lightbulb, StickyNote, ChevronRight, LayoutGrid, BookOpen, RefreshCw } from 'lucide-react'
 import type { Project } from '../db'
 
 export default function ProjectList() {
@@ -13,8 +13,41 @@ export default function ProjectList() {
   const [description, setDescription] = useState('')
   const [error, setError] = useState('')
   const [projects, setProjects] = useState<(Project & { noteCount?: number })[] | null>(null)
+  const [updating, setUpdating] = useState(false)
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'found' | 'current'>('idle')
   const navigate = useNavigate()
   const { user } = useAuth()
+
+  async function checkForUpdate() {
+    setUpdating(true)
+    setUpdateStatus('checking')
+    try {
+      const reg = await navigator.serviceWorker?.getRegistration()
+      if (reg) {
+        await reg.update()
+        // Wait briefly for the SW to detect a new version
+        await new Promise(r => setTimeout(r, 1500))
+        if (reg.waiting) {
+          // New version found — activate it and reload
+          setUpdateStatus('found')
+          reg.waiting.postMessage({ type: 'SKIP_WAITING' })
+          await new Promise(r => setTimeout(r, 500))
+          window.location.reload()
+        } else {
+          setUpdateStatus('current')
+          setTimeout(() => setUpdateStatus('idle'), 2000)
+        }
+      } else {
+        // No service worker — just hard reload
+        window.location.reload()
+      }
+    } catch {
+      // Fallback: hard reload
+      window.location.reload()
+    } finally {
+      setUpdating(false)
+    }
+  }
 
   useEffect(() => {
     if (!user) return
@@ -97,6 +130,18 @@ export default function ProjectList() {
             className="w-10 h-10 bg-accent text-white rounded-full flex items-center justify-center hover:bg-accent-dark active:scale-95 transition-all shadow-lg"
           >
             <Plus className="w-5 h-5" />
+          </button>
+          <button
+            onClick={checkForUpdate}
+            disabled={updating}
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+              updateStatus === 'current' ? 'text-green-500 bg-green-50' :
+              updateStatus === 'found' ? 'text-primary bg-blue-50' :
+              'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+            }`}
+            title={updateStatus === 'current' ? 'App is up to date' : updateStatus === 'checking' ? 'Checking...' : 'Check for updates'}
+          >
+            <RefreshCw className={`w-4 h-4 ${updating ? 'animate-spin' : ''}`} />
           </button>
           <button
             onClick={() => signOut(auth)}
