@@ -175,7 +175,7 @@ export default function ProjectList() {
             <TestTubes className="w-5 h-5 text-primary" />
           </div>
           <div className="flex-1">
-            <span className="font-medium text-slate-900 text-sm">ThioLink Analysis</span>
+            <span className="font-medium text-slate-900 text-sm">Conjugation Efficiency</span>
             <p className="text-xs text-slate-400">Post-conjugation yield analysis</p>
           </div>
           <ChevronRight className="w-4 h-4 text-slate-300" />

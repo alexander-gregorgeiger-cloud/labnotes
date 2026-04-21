@@ -312,7 +312,7 @@ export default function ThioLinkAnalysis() {
 
   function downloadCSV() {
     const yields = calcYields()
-    let csv = `ThioLink Conjugation Analysis\n`
+    let csv = `Conjugation Efficiency Analysis\n`
     csv += `Date,${new Date().toLocaleDateString()}\n`
     csv += `A280/A260 correction factor,${correctionFactor}\n`
     csv += `Path length (cm),${pathLength}\n\n`
@@ -336,7 +336,7 @@ export default function ThioLinkAnalysis() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `thiolink_analysis_${new Date().toISOString().slice(0, 10)}.csv`
+    a.download = `conjugation_efficiency_${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -372,7 +372,8 @@ export default function ThioLinkAnalysis() {
         <label className="text-xs text-slate-400">{label}</label>
         <div className="relative">
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             value={value}
             onChange={e => onChange(e.target.value)}
             placeholder={placeholder}
@@ -421,11 +422,11 @@ export default function ThioLinkAnalysis() {
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-slate-400">ratio:</span>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 value={comp.oligoRatio}
                 onChange={e => onUpdate('oligoRatio', e.target.value)}
                 className="w-12 px-1.5 py-0.5 text-xs border border-slate-200 rounded text-center focus:outline-none focus:ring-1 focus:ring-primary-light"
-                min="1"
               />
             </div>
           )}
@@ -440,7 +441,8 @@ export default function ThioLinkAnalysis() {
           <div>
             <label className="text-[10px] text-slate-400">A×V (mA·mL)</label>
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               value={comp.av}
               onChange={e => onUpdate('av', e.target.value)}
               placeholder="0"
@@ -510,7 +512,7 @@ export default function ThioLinkAnalysis() {
         </div>
       </div>
 
-      <h1 className="text-2xl font-bold text-slate-900 mb-1">ThioLink Analysis</h1>
+      <h1 className="text-2xl font-bold text-slate-900 mb-1">Conjugation Efficiency</h1>
       <p className="text-sm text-slate-500 mb-4">Post-conjugation analysis from SEC/absorbance data</p>
 
       {/* Load saved analysis */}
