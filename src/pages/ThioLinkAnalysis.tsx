@@ -357,9 +357,12 @@ export default function ThioLinkAnalysis() {
   }
 
   const yields = calcYields()
+  const hasProteinDef = (parseFloat(proteinE280) || 0) > 0
+  const hasOligoDef = (parseFloat(oligoE280) || 0) > 0
+  const hasDefinitions = hasProteinDef && hasOligoDef
   const hasControlData = controlComponents.some(c => parseFloat(c.av) > 0)
   const hasTestData = testComponents.some(c => parseFloat(c.av) > 0)
-  const hasResults = hasControlData && hasTestData
+  const hasResults = hasControlData && hasTestData && hasDefinitions
 
   function InputField({ label, value, onChange, placeholder, unit }: {
     label: string; value: string; onChange: (v: string) => void; placeholder?: string; unit?: string
@@ -560,7 +563,7 @@ export default function ThioLinkAnalysis() {
       </div>
 
       {/* Protein & Oligo Definitions */}
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 mb-4">
+      <div className={`bg-white rounded-2xl p-4 shadow-sm border mb-4 ${!hasProteinDef && (hasControlData || hasTestData) ? 'border-amber-300 bg-amber-50/30' : 'border-slate-200'}`}>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xs font-bold text-primary uppercase tracking-wide">Protein Definition</h2>
           <button
@@ -587,7 +590,7 @@ export default function ThioLinkAnalysis() {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 mb-4">
+      <div className={`bg-white rounded-2xl p-4 shadow-sm border mb-4 ${!hasOligoDef && (hasControlData || hasTestData) ? 'border-amber-300 bg-amber-50/30' : 'border-slate-200'}`}>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xs font-bold text-primary uppercase tracking-wide">Oligo Definition</h2>
           <button
@@ -655,6 +658,16 @@ export default function ThioLinkAnalysis() {
           })}
         </div>
       </div>
+
+      {/* Warning when definitions are missing */}
+      {(hasControlData || hasTestData) && !hasDefinitions && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
+          <p className="text-sm text-amber-800 font-medium">Missing definitions</p>
+          <p className="text-xs text-amber-600 mt-1">
+            Fill in {!hasProteinDef && 'Protein ε₂₈₀'}{!hasProteinDef && !hasOligoDef && ' and '}{!hasOligoDef && 'Oligo ε₂₈₀'} above to calculate results.
+          </p>
+        </div>
+      )}
 
       {/* Results Summary */}
       {hasResults && (
