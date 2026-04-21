@@ -12,6 +12,7 @@ import PanelPlanner from './pages/PanelPlanner'
 import EpsilonLibrary from './pages/EpsilonLibrary'
 import ConjugationRecordList from './pages/ConjugationRecordList'
 import ConjugationRecordDetail from './pages/ConjugationRecordDetail'
+import ThioLinkAnalysis from './pages/ThioLinkAnalysis'
 
 export default function App() {
   const { user, loading } = useAuth()
@@ -39,6 +40,7 @@ export default function App() {
       <Route path="/memos" element={<MemoList />} />
       <Route path="/panel-planner" element={<PanelPlanner />} />
       <Route path="/epsilon-library" element={<EpsilonLibrary />} />
+      <Route path="/thiolink" element={<ThioLinkAnalysis />} />
       <Route path="/records" element={<ConjugationRecordList />} />
       <Route path="/record/:id" element={<ConjugationRecordDetail />} />
     </Routes>
