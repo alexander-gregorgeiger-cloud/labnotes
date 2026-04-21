@@ -179,35 +179,40 @@ export default function ThioLinkAnalysis() {
     const mControlProtein = controlProtein ? calcComponent(controlProtein).m : 0
     const nControlOligo = controlOligo ? calcComponent(controlOligo).n : 0
     const nTestProtein = testProtein ? calcComponent(testProtein).n : 0
-    const mTestProtein = testProtein ? calcComponent(testProtein).m : 0
     const nTestOligo = testOligo ? calcComponent(testOligo).n : 0
 
-    // Total conjugate moles and mass
+    // Total conjugate moles
     let totalConjN = 0
-    let totalConjM = 0
+    const pMW = parseFloat(proteinMW) || 0
     const conjDetails: { name: string; n: number; m: number; conjYield: number; recYield: number }[] = []
 
     for (const conj of conjugates) {
       const r = calcComponent(conj)
       totalConjN += r.n
-      totalConjM += r.m
+    }
+
+    const totalTestN = nTestProtein + totalConjN
+
+    // Build per-conjugate details (needs totalTestN, so second pass)
+    for (const conj of conjugates) {
+      const r = calcComponent(conj)
+      const proteinMassRecovered = r.n * pMW / 1e3
       conjDetails.push({
         name: conj.name,
         n: r.n,
         m: r.m,
-        conjYield: nControlProtein > 0 ? r.n / nControlProtein : 0,
-        recYield: mControlProtein > 0 ? r.m / mControlProtein : 0,
+        conjYield: totalTestN > 0 ? r.n / totalTestN : 0,
+        recYield: mControlProtein > 0 ? proteinMassRecovered / mControlProtein : 0,
       })
     }
 
-    // Conjugation yield: fraction of control protein moles that became conjugates
-    const conjugationYield = nControlProtein > 0
-      ? (nTestProtein + totalConjN > 0 ? totalConjN / (nTestProtein + totalConjN) : 0)
-      : 0
+    // Conjugation yield: fraction of recovered protein moles that are conjugated
+    const conjugationYield = totalTestN > 0 ? totalConjN / totalTestN : 0
 
-    // Recovery yield: total recovered mass (unconjugated + conjugates) vs control input
-    const totalRecoveredM = mTestProtein + totalConjM
-    const recoveryYield = mControlProtein > 0 ? totalRecoveredM / mControlProtein : 0
+    // Recovery yield: total recovered protein mass vs control input
+    // Uses protein MW for all species (tracks original protein recovery)
+    const totalRecoveredProteinM = totalTestN * pMW / 1e3
+    const recoveryYield = mControlProtein > 0 ? totalRecoveredProteinM / mControlProtein : 0
 
     // Oligo removal yield: fraction of oligo removed
     const oligoRemovalYield = nControlOligo > 0
