@@ -12,6 +12,119 @@ interface Component {
   av: string // A*V in mA*mL
 }
 
+// --- Standalone UI components (outside parent to prevent remounting on state change) ---
+
+function InputField({ label, value, onChange, placeholder, unit }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; unit?: string
+}) {
+  return (
+    <div>
+      <label className="text-xs text-slate-400">{label}</label>
+      <div className="relative">
+        <input
+          type="text"
+          inputMode="decimal"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+        />
+        {unit && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-300 mt-0.5">{unit}</span>}
+      </div>
+    </div>
+  )
+}
+
+function ResultCell({ label, value, unit, color = 'primary' }: {
+  label: string; value: string; unit: string; color?: string
+}) {
+  const colorClass = color === 'accent' ? 'text-accent' : color === 'green' ? 'text-emerald-600' : 'text-primary'
+  return (
+    <div className="text-center">
+      <div className="text-[10px] text-slate-400">{label}</div>
+      <div className={`text-sm font-semibold ${colorClass}`}>{value}</div>
+      <div className="text-[10px] text-slate-400">{unit}</div>
+    </div>
+  )
+}
+
+function ComponentRow({ comp, onUpdate, onRemove, canRemove, eps, mw, result }: {
+  comp: Component
+  onUpdate: (field: keyof Component, value: string) => void
+  onRemove?: () => void
+  canRemove?: boolean
+  eps: number
+  mw: number
+  result: { n: number; m: number; valid: boolean }
+}) {
+  const isConjugate = comp.oligoRatio !== '0' && comp.oligoRatio !== 'NA'
+
+  return (
+    <div className="bg-white rounded-xl p-3 border border-slate-100">
+      <div className="flex items-center gap-2 mb-2">
+        <input
+          type="text"
+          value={comp.name}
+          onChange={e => onUpdate('name', e.target.value)}
+          className="flex-1 text-sm font-medium text-slate-800 bg-transparent border-none focus:outline-none"
+        />
+        {isConjugate && (
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-slate-400">ratio:</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={comp.oligoRatio}
+              onChange={e => onUpdate('oligoRatio', e.target.value)}
+              className="w-12 px-1.5 py-0.5 text-xs border border-slate-200 rounded text-center focus:outline-none focus:ring-1 focus:ring-primary-light"
+            />
+          </div>
+        )}
+        {canRemove && onRemove && (
+          <button onClick={onRemove} className="text-slate-300 hover:text-red-400 transition-colors">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <div>
+          <label className="text-[10px] text-slate-400">A×V (mA·mL)</label>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={comp.av}
+            onChange={e => onUpdate('av', e.target.value)}
+            placeholder="0"
+            className="w-full px-2 py-1 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
+          />
+        </div>
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <label className="text-[10px] text-slate-400">ε (calc.)</label>
+            <div className="px-2 py-1 bg-slate-50 rounded-lg text-sm text-slate-600 mt-0.5">
+              {eps > 0 ? eps.toLocaleString('en-US') : '—'}
+            </div>
+          </div>
+          <div className="flex-1">
+            <label className="text-[10px] text-slate-400">MW (calc.)</label>
+            <div className="px-2 py-1 bg-slate-50 rounded-lg text-sm text-slate-600 mt-0.5">
+              {mw > 0 ? mw.toLocaleString('en-US') : '—'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {result.valid && (
+        <div className="bg-slate-50 rounded-lg p-2 grid grid-cols-2 gap-1">
+          <ResultCell label="Moles" value={result.n.toFixed(3)} unit="nmol" />
+          <ResultCell label="Mass" value={result.m.toFixed(1)} unit="µg" color="accent" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface SavedAnalysis {
   id: string
   title: string
@@ -129,9 +242,10 @@ export default function ThioLinkAnalysis() {
   }, [user])
 
   // Calculate epsilon for a component based on oligo ratio
+  // Uses auto-computed ε₂₈₀ for oligo if not manually entered
   function calcEpsilon(oligoRatio: string): number {
     const pE = parseFloat(proteinE280) || 0
-    const oE = parseFloat(oligoE280) || 0
+    const oE = parseFloat(oligoE280) || (parseFloat(oligoE260) || 0) * 0.5
     const ratio = parseFloat(oligoRatio)
     if (oligoRatio === 'NA') return oE
     if (isNaN(ratio) || ratio === 0) return pE
@@ -358,122 +472,19 @@ export default function ThioLinkAnalysis() {
 
   const yields = calcYields()
   const hasProteinDef = (parseFloat(proteinE280) || 0) > 0
-  const hasOligoDef = (parseFloat(oligoE280) || 0) > 0
+  const hasOligoDef = (parseFloat(oligoE280) || 0) > 0 || (parseFloat(oligoE260) || 0) > 0
   const hasDefinitions = hasProteinDef && hasOligoDef
   const hasControlData = controlComponents.some(c => parseFloat(c.av) > 0)
   const hasTestData = testComponents.some(c => parseFloat(c.av) > 0)
   const hasResults = hasControlData && hasTestData && hasDefinitions
 
-  function InputField({ label, value, onChange, placeholder, unit }: {
-    label: string; value: string; onChange: (v: string) => void; placeholder?: string; unit?: string
-  }) {
-    return (
-      <div>
-        <label className="text-xs text-slate-400">{label}</label>
-        <div className="relative">
-          <input
-            type="text"
-            inputMode="decimal"
-            value={value}
-            onChange={e => onChange(e.target.value)}
-            placeholder={placeholder}
-            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
-          />
-          {unit && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-300 mt-0.5">{unit}</span>}
-        </div>
-      </div>
-    )
-  }
-
-  function ResultCell({ label, value, unit, color = 'primary' }: {
-    label: string; value: string; unit: string; color?: string
-  }) {
-    const colorClass = color === 'accent' ? 'text-accent' : color === 'green' ? 'text-emerald-600' : 'text-primary'
-    return (
-      <div className="text-center">
-        <div className="text-[10px] text-slate-400">{label}</div>
-        <div className={`text-sm font-semibold ${colorClass}`}>{value}</div>
-        <div className="text-[10px] text-slate-400">{unit}</div>
-      </div>
-    )
-  }
-
-  function ComponentRow({ comp, onUpdate, onRemove, canRemove }: {
-    comp: Component
-    onUpdate: (field: keyof Component, value: string) => void
-    onRemove?: () => void
-    canRemove?: boolean
-  }) {
-    const r = calcComponent(comp)
-    const eps = calcEpsilon(comp.oligoRatio)
-    const mw = calcMW(comp.oligoRatio)
-    const isConjugate = comp.oligoRatio !== '0' && comp.oligoRatio !== 'NA'
-
-    return (
-      <div className="bg-white rounded-xl p-3 border border-slate-100">
-        <div className="flex items-center gap-2 mb-2">
-          <input
-            type="text"
-            value={comp.name}
-            onChange={e => onUpdate('name', e.target.value)}
-            className="flex-1 text-sm font-medium text-slate-800 bg-transparent border-none focus:outline-none"
-          />
-          {isConjugate && (
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] text-slate-400">ratio:</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={comp.oligoRatio}
-                onChange={e => onUpdate('oligoRatio', e.target.value)}
-                className="w-12 px-1.5 py-0.5 text-xs border border-slate-200 rounded text-center focus:outline-none focus:ring-1 focus:ring-primary-light"
-              />
-            </div>
-          )}
-          {canRemove && onRemove && (
-            <button onClick={onRemove} className="text-slate-300 hover:text-red-400 transition-colors">
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 mb-2">
-          <div>
-            <label className="text-[10px] text-slate-400">A×V (mA·mL)</label>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={comp.av}
-              onChange={e => onUpdate('av', e.target.value)}
-              placeholder="0"
-              className="w-full px-2 py-1 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
-            />
-          </div>
-          <div className="flex items-end gap-2">
-            <div className="flex-1">
-              <label className="text-[10px] text-slate-400">ε (calc.)</label>
-              <div className="px-2 py-1 bg-slate-50 rounded-lg text-sm text-slate-600 mt-0.5">
-                {eps > 0 ? eps.toLocaleString('en-US') : '—'}
-              </div>
-            </div>
-            <div className="flex-1">
-              <label className="text-[10px] text-slate-400">MW (calc.)</label>
-              <div className="px-2 py-1 bg-slate-50 rounded-lg text-sm text-slate-600 mt-0.5">
-                {mw > 0 ? mw.toLocaleString('en-US') : '—'}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {r.valid && (
-          <div className="bg-slate-50 rounded-lg p-2 grid grid-cols-2 gap-1">
-            <ResultCell label="Moles" value={r.n.toFixed(3)} unit="nmol" />
-            <ResultCell label="Mass" value={r.m.toFixed(1)} unit="µg" color="accent" />
-          </div>
-        )}
-      </div>
-    )
-  }
+  // Auto-compute missing ε values
+  const proteinE260Auto = (parseFloat(proteinE280) || 0) > 0 && !proteinE260
+    ? String(Math.round((parseFloat(proteinE280) || 0) / (parseFloat(correctionFactor) || 1.55)))
+    : ''
+  const oligoE280Auto = (parseFloat(oligoE260) || 0) > 0 && !oligoE280
+    ? String(Math.round((parseFloat(oligoE260) || 0) * 0.5))
+    : ''
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
@@ -587,7 +598,7 @@ export default function ThioLinkAnalysis() {
             />
           </div>
           <InputField label="ε₂₈₀" value={proteinE280} onChange={setProteinE280} placeholder="62015" />
-          <InputField label="ε₂₆₀" value={proteinE260} onChange={setProteinE260} placeholder="" />
+          <InputField label="ε₂₆₀" value={proteinE260} onChange={setProteinE260} placeholder={proteinE260Auto ? `~${proteinE260Auto}` : ''} />
           <InputField label="MW" value={proteinMW} onChange={setProteinMW} placeholder="32500" unit="Da" />
         </div>
       </div>
@@ -613,7 +624,7 @@ export default function ThioLinkAnalysis() {
               className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
             />
           </div>
-          <InputField label="ε₂₈₀" value={oligoE280} onChange={setOligoE280} placeholder="138194" />
+          <InputField label="ε₂₈₀" value={oligoE280} onChange={setOligoE280} placeholder={oligoE280Auto ? `~${oligoE280Auto}` : '138194'} />
           <InputField label="ε₂₆₀" value={oligoE260} onChange={setOligoE260} placeholder="" />
           <InputField label="MW" value={oligoMW} onChange={setOligoMW} placeholder="6487" unit="Da" />
         </div>
@@ -627,6 +638,9 @@ export default function ThioLinkAnalysis() {
             <ComponentRow
               key={comp.id}
               comp={comp}
+              eps={calcEpsilon(comp.oligoRatio)}
+              mw={calcMW(comp.oligoRatio)}
+              result={calcComponent(comp)}
               onUpdate={(field, value) => updateComponent(setControlComponents, comp.id, field, value)}
             />
           ))}
@@ -652,6 +666,9 @@ export default function ThioLinkAnalysis() {
               <ComponentRow
                 key={comp.id}
                 comp={comp}
+                eps={calcEpsilon(comp.oligoRatio)}
+                mw={calcMW(comp.oligoRatio)}
+                result={calcComponent(comp)}
                 onUpdate={(field, value) => updateComponent(setTestComponents, comp.id, field, value)}
                 onRemove={isConjugate ? () => removeTestComponent(comp.id) : undefined}
                 canRemove={isConjugate}

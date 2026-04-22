@@ -94,6 +94,45 @@ function getAAComposition(seq: string): { aa: string; count: number; pct: number
     .map(([aa, count]) => ({ aa, count, pct: (count / seq.length) * 100 }))
 }
 
+// --- Nucleotide properties (ssDNA) ---
+// Individual nucleotide ε₂₆₀ values (M⁻¹cm⁻¹) at pH 7.0
+const NUC_E260: Record<string, number> = {
+  A: 15400, C: 7400, G: 11500, T: 8700, U: 9900,
+}
+// Individual nucleotide MW (as monophosphate, Da)
+const NUC_MW: Record<string, number> = {
+  A: 331.2, C: 307.2, G: 347.2, T: 322.2, U: 324.2,
+}
+// For an oligo: MW = sum(nucleotide MWs) - (n-1)*18.015 (water lost per phosphodiester bond)
+
+function calcNucEpsilon260(seq: string): number {
+  let total = 0
+  for (const nt of seq) {
+    total += NUC_E260[nt] || 0
+  }
+  return total
+}
+
+function calcNucMW(seq: string): number {
+  let mw = 0
+  for (const nt of seq) {
+    mw += NUC_MW[nt] || 0
+  }
+  // Subtract water for each phosphodiester bond
+  if (seq.length > 1) mw -= (seq.length - 1) * 18.015
+  return mw
+}
+
+function getNucComposition(seq: string): { nt: string; count: number; pct: number }[] {
+  const counts: Record<string, number> = {}
+  for (const nt of seq) {
+    counts[nt] = (counts[nt] || 0) + 1
+  }
+  return Object.entries(counts)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([nt, count]) => ({ nt, count, pct: (count / seq.length) * 100 }))
+}
+
 interface EpsilonEntry {
   id: string
   name: string
@@ -116,9 +155,12 @@ export default function EpsilonLibrary() {
   const [entries, setEntries] = useState<EpsilonEntry[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [showCalc, setShowCalc] = useState(false)
+  const [showNucCalc, setShowNucCalc] = useState(false)
   const [seqInput, setSeqInput] = useState('')
   const [seqName, setSeqName] = useState('')
   const [numSS, setNumSS] = useState('') // number of disulfide bonds (override)
+  const [nucSeqInput, setNucSeqInput] = useState('')
+  const [nucSeqName, setNucSeqName] = useState('')
   const [newName, setNewName] = useState('')
   const [newE280, setNewE280] = useState('')
   const [newE260, setNewE260] = useState('')
@@ -328,6 +370,104 @@ export default function EpsilonLibrary() {
                       setNumSS('')
                     }}
                     className="w-full flex items-center justify-center gap-2 bg-primary text-white py-2.5 rounded-lg font-medium hover:bg-primary-dark transition-colors"
+                  >
+                    <Save className="w-4 h-4" />
+                    Save to Library
+                  </button>
+                </>
+              )
+            })()}
+          </div>
+        )}
+      </div>
+
+      {/* Nucleotide Sequence Calculator */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 mb-4 overflow-hidden">
+        <button
+          onClick={() => setShowNucCalc(!showNucCalc)}
+          className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-emerald-50 rounded-xl flex items-center justify-center">
+              <span className="text-emerald-600 font-bold text-xs">DNA</span>
+            </div>
+            <div className="text-left">
+              <span className="font-medium text-slate-900 text-sm">Nucleotide Sequence → Properties</span>
+              <p className="text-xs text-slate-400">Compute ε₂₆₀, ε₂₈₀, MW from DNA/RNA sequence</p>
+            </div>
+          </div>
+          {showNucCalc ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+        </button>
+
+        {showNucCalc && (
+          <div className="px-4 pb-4 border-t border-slate-100 pt-3">
+            <input
+              type="text"
+              value={nucSeqName}
+              onChange={e => setNucSeqName(e.target.value)}
+              placeholder="Oligo name (e.g. cs01, capture strand)"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-primary-light"
+            />
+            <textarea
+              value={nucSeqInput}
+              onChange={e => setNucSeqInput(e.target.value)}
+              placeholder="Paste nucleotide sequence&#10;e.g. ATCGATCGATCG..."
+              rows={3}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-primary-light font-mono resize-none"
+            />
+
+            {(() => {
+              const cleaned = nucSeqInput.toUpperCase().replace(/[^ACGTU]/g, '')
+              if (cleaned.length < 2) return <p className="text-xs text-slate-400 text-center py-2">Enter at least 2 nucleotides to compute properties.</p>
+
+              const e260 = calcNucEpsilon260(cleaned)
+              const e280 = Math.round(e260 * 0.5) // typical ssDNA A280/A260 ≈ 0.5
+              const mw = calcNucMW(cleaned)
+              const composition = getNucComposition(cleaned)
+              const hasU = cleaned.includes('U')
+
+              return (
+                <>
+                  <div className="bg-slate-50 rounded-xl p-4 mb-3">
+                    <div className="grid grid-cols-3 gap-3 mb-3">
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-emerald-600">{e260.toLocaleString("en-US").replace(/,/g, "'")}</div>
+                        <div className="text-[10px] text-slate-400">ε₂₆₀ (M⁻¹cm⁻¹)</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-emerald-600">~{e280.toLocaleString("en-US").replace(/,/g, "'")}</div>
+                        <div className="text-[10px] text-slate-400">ε₂₈₀ (est.)</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-primary">{mw.toFixed(1)}</div>
+                        <div className="text-[10px] text-slate-400">MW (Da)</div>
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-slate-400 text-center">
+                      {cleaned.length} nt · {hasU ? 'RNA' : 'DNA'} · {composition.map(c => `${c.count}${c.nt}`).join(' ')}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      if (!user || !nucSeqName.trim()) {
+                        alert('Please enter an oligo name')
+                        return
+                      }
+                      await addDoc(collection(firestore, 'users', user.uid, 'epsilonLibrary'), {
+                        name: nucSeqName.trim(),
+                        epsilon280: String(e280),
+                        epsilon260: String(e260),
+                        epsilonMass: '',
+                        mw: String(Math.round(mw)),
+                        sequence: cleaned,
+                        sequenceType: hasU ? 'RNA' : 'DNA',
+                        createdAt: Timestamp.now(),
+                      })
+                      setNucSeqInput('')
+                      setNucSeqName('')
+                    }}
+                    className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white py-2.5 rounded-lg font-medium hover:bg-emerald-700 transition-colors"
                   >
                     <Save className="w-4 h-4" />
                     Save to Library
