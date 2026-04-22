@@ -157,7 +157,7 @@ export default function ConjugationRecordList() {
           <div className="mb-3">
             <label className="text-sm font-medium text-slate-700 mb-1 block">Number of tubes</label>
             <div className="flex gap-2">
-              {[1, 2, 3, 4, 5].map(n => (
+              {Array.from({ length: 15 }, (_, i) => i + 1).map(n => (
                 <button
                   key={n}
                   type="button"

@@ -16,6 +16,7 @@ import {
   calcYieldPercent,
   calcDilutionVolume,
   calcOligoConcentrationUm,
+  createDefaultTube,
   type ConjugationRecord,
   type TubeData,
   type CommonMaterial,
@@ -285,6 +286,20 @@ export default function ConjugationRecordDetail() {
     save({ oligoReconstitutions })
   }
 
+  // Change tube count (grow or shrink the tubes array)
+  function changeTubeCount(n: number) {
+    if (!record) return
+    const current = record.tubes
+    let tubes: TubeData[]
+    if (n > current.length) {
+      tubes = [...current, ...Array.from({ length: n - current.length }, () => createDefaultTube())]
+    } else {
+      tubes = current.slice(0, n)
+    }
+    setRecord({ ...record, tubeCount: n, tubes })
+    save({ tubeCount: n, tubes })
+  }
+
   // Update acceptance criteria
   function updateAcceptance(variant: string, field: string, value: number | null) {
     if (!record) return
@@ -344,6 +359,26 @@ export default function ConjugationRecordDetail() {
             <TextInput label="Date Started" value={r.dateStarted} onChange={v => updateField('dateStarted', v)} placeholder="YYYY-MM-DD" />
             <TextInput label="Date Finished" value={r.dateFinished} onChange={v => updateField('dateFinished', v)} placeholder="YYYY-MM-DD" />
             <TextInput label="Prepared By" value={r.preparedBy} onChange={v => updateField('preparedBy', v)} placeholder="Name" className="col-span-2" />
+          </div>
+          {/* Tube count */}
+          <div className="mt-4">
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Number of Tubes</label>
+            <div className="flex flex-wrap gap-1.5">
+              {Array.from({ length: 15 }, (_, i) => i + 1).map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => changeTubeCount(n)}
+                  className={`w-9 h-9 rounded-lg text-sm font-medium transition-all ${
+                    r.tubeCount === n
+                      ? 'bg-primary text-white shadow-md'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
           </div>
           {/* Tube assignment */}
           <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">Tube Assignment</h3>
