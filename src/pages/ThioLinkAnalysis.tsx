@@ -9,7 +9,10 @@ interface Component {
   id: string
   name: string
   oligoRatio: string // '0' for free protein, 'NA' for free oligo, '1','2',... for conjugates
-  av: string // A*V in mA*mL
+  av: string // A*V in mA*mL (used when inputMode === 'av')
+  inputMode?: 'av' | 'cv' // 'av' = A×V (default), 'cv' = conc+vol
+  conc?: string // mg/mL (used when inputMode === 'cv')
+  vol?: string  // µL   (used when inputMode === 'cv')
 }
 
 // --- Standalone UI components (outside parent to prevent remounting on state change) ---
@@ -89,23 +92,68 @@ function ComponentRow({ comp, onUpdate, onRemove, canRemove, eps, mw, result }: 
 
       <div className="grid grid-cols-2 gap-2 mb-2">
         <div>
-          <label className="text-[10px] text-slate-400">A×V (mA·mL)</label>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={comp.av}
-            onChange={e => onUpdate('av', e.target.value)}
-            placeholder="0"
-            className="w-full px-2 py-1 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light"
-          />
-        </div>
-        <div className="flex items-end gap-2">
-          <div className="flex-1">
-            <label className="text-[10px] text-slate-400">ε (calc.)</label>
-            <div className="px-2 py-1 bg-slate-50 rounded-lg text-sm text-slate-600 mt-0.5">
-              {eps > 0 ? eps.toLocaleString('en-US') : '—'}
+          <div className="flex items-center justify-between mb-0.5">
+            <label className="text-[10px] text-slate-400">
+              {(comp.inputMode || 'av') === 'cv' ? 'Conc + Vol' : 'A×V (mA·mL)'}
+            </label>
+            <div className="flex rounded overflow-hidden border border-slate-200 text-[9px] font-medium">
+              <button
+                type="button"
+                onClick={() => onUpdate('inputMode', 'av')}
+                className={`px-1.5 py-0.5 transition-colors ${(comp.inputMode || 'av') !== 'cv' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+              >A×V</button>
+              <button
+                type="button"
+                onClick={() => onUpdate('inputMode', 'cv')}
+                className={`px-1.5 py-0.5 transition-colors ${(comp.inputMode || 'av') === 'cv' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+              >C+V</button>
             </div>
           </div>
+          {(comp.inputMode || 'av') === 'cv' ? (
+            <div className="grid grid-cols-2 gap-1">
+              <div className="relative">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={comp.conc || ''}
+                  onChange={e => onUpdate('conc', e.target.value)}
+                  placeholder="0"
+                  className="w-full px-2 py-1 pr-8 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+                <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-300 pointer-events-none">mg/mL</span>
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={comp.vol || ''}
+                  onChange={e => onUpdate('vol', e.target.value)}
+                  placeholder="0"
+                  className="w-full px-2 py-1 pr-5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+                <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-300 pointer-events-none">µL</span>
+              </div>
+            </div>
+          ) : (
+            <input
+              type="text"
+              inputMode="decimal"
+              value={comp.av}
+              onChange={e => onUpdate('av', e.target.value)}
+              placeholder="0"
+              className="w-full px-2 py-1 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light"
+            />
+          )}
+        </div>
+        <div className="flex items-end gap-2">
+          {(comp.inputMode || 'av') !== 'cv' && (
+            <div className="flex-1">
+              <label className="text-[10px] text-slate-400">ε (calc.)</label>
+              <div className="px-2 py-1 bg-slate-50 rounded-lg text-sm text-slate-600 mt-0.5">
+                {eps > 0 ? eps.toLocaleString('en-US') : '—'}
+              </div>
+            </div>
+          )}
           <div className="flex-1">
             <label className="text-[10px] text-slate-400">MW (calc.)</label>
             <div className="px-2 py-1 bg-slate-50 rounded-lg text-sm text-slate-600 mt-0.5">
@@ -151,7 +199,7 @@ let nextId = 1
 function makeId() { return `t${nextId++}` }
 
 function newComponent(name: string, oligoRatio: string): Component {
-  return { id: makeId(), name, oligoRatio, av: '' }
+  return { id: makeId(), name, oligoRatio, av: '', inputMode: 'av', conc: '', vol: '' }
 }
 
 export default function ThioLinkAnalysis() {
@@ -264,6 +312,21 @@ export default function ThioLinkAnalysis() {
 
   // Calculate n, c, m for a component
   function calcComponent(comp: Component) {
+    const mode = comp.inputMode || 'av'
+
+    if (mode === 'cv') {
+      // Conc+Vol mode: n(nmol) = conc(mg/mL) × vol(µL) / MW(kDa)
+      // because 1 mg/mL × 1 µL = 1 µg, and 1 µg / 1 kDa = 1 nmol
+      const conc = parseFloat(comp.conc || '') || 0
+      const vol = parseFloat(comp.vol || '') || 0
+      const mw = calcMW(comp.oligoRatio)
+      if (conc === 0 || vol === 0 || mw === 0) return { n: 0, m: 0, valid: false }
+      const mUg = conc * vol
+      const nNmol = mUg / mw
+      return { n: nNmol, m: mUg, valid: true }
+    }
+
+    // A×V mode (default)
     const av = parseFloat(comp.av) || 0
     const eps = calcEpsilon(comp.oligoRatio)
     const l = parseFloat(pathLength) || 0.2
