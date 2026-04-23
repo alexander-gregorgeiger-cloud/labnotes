@@ -65,6 +65,7 @@ export default function ConjugationRecordList() {
         customAdapters: [],
         mixingRatioLinker: 2,
         mixingRatioOligo: 2.5,
+        inputMassPerTube: 1,
         dateStarted: '',
         dateFinished: '',
         preparedBy: '',

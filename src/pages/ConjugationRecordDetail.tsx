@@ -538,8 +538,22 @@ export default function ConjugationRecordDetail() {
               Add Custom Adapter
             </button>
 
-            {/* 2.2 Pre-Calculated Volumes (dynamic — recalculates with ratio) */}
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">2.2 Pre-Calculated Volumes (1 mg input)</h3>
+            {/* 2.2 Pre-Calculated Volumes (dynamic — recalculates with ratio & input mass) */}
+            <div className="flex items-center justify-between mt-4 mb-2">
+              <h3 className="text-sm font-semibold text-slate-700">2.2 Pre-Calculated Volumes</h3>
+              <div className="flex items-center gap-1.5">
+                <label className="text-xs text-slate-400">Input mass</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  value={r.inputMassPerTube ?? 1}
+                  onChange={e => updateField('inputMassPerTube', parseFloat(e.target.value) || 1)}
+                  className="w-16 text-center px-2 py-1 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+                <span className="text-xs text-slate-400">mg</span>
+              </div>
+            </div>
             <div className="overflow-x-auto -mx-4 px-4">
               <table className="w-full text-xs border-collapse">
                 <thead>
@@ -553,7 +567,7 @@ export default function ConjugationRecordDetail() {
                 </thead>
                 <tbody>
                   {getAllVariants(r).map(v => {
-                    const vols = calcVariantVolumes(v.mwProtein, r.mixingRatioLinker ?? 2, r.mixingRatioOligo ?? 2.5)
+                    const vols = calcVariantVolumes(v.mwProtein, r.mixingRatioLinker ?? 2, r.mixingRatioOligo ?? 2.5, r.inputMassPerTube ?? 1)
                     const isCustom = !(ADAPTER_VARIANTS.some(bv => bv.name === v.name))
                     return (
                       <tr key={v.name} className={`border-b border-slate-100 ${isCustom ? 'bg-primary/5' : ''}`}>

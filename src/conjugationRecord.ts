@@ -190,6 +190,8 @@ export interface ConjugationRecord {
   // Mixing ratio Protein : Linker : Oligo (protein is always 1)
   mixingRatioLinker: number   // default 2
   mixingRatioOligo: number    // default 2.5
+  // Input mass per tube for pre-calculated volumes (mg, default 1)
+  inputMassPerTube: number
   // Tubes (1-15)
   tubeCount: number
   tubes: TubeData[]
@@ -353,9 +355,10 @@ export const OLIGO_MW_KDA = 6.8
 export function calcVariantVolumes(
   mwProtein: number,
   linkerRatio: number,
-  oligoRatio: number
+  oligoRatio: number,
+  inputMassMg: number = 1
 ): { proteinAmount: number; linkerAmount: number; linkerVolume: number; oligoAmount: number; oligoVolume: number } {
-  const proteinAmount = 1000 / mwProtein
+  const proteinAmount = (inputMassMg * 1000) / mwProtein
   const linkerAmount  = proteinAmount * linkerRatio
   const linkerVolume  = linkerAmount               // µL (1 mM stock)
   const oligoAmount   = proteinAmount * oligoRatio

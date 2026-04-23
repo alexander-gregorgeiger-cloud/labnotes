@@ -237,10 +237,11 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
   // ── Section 2 ──
   const lr = r.mixingRatioLinker ?? 2
   const or_ = r.mixingRatioOligo ?? 2.5
+  const inputMg = r.inputMassPerTube ?? 1
   const allVariants = getAllVariants(r)
 
   addSectionHeader(2, 'ADAPTER SPECIFICATIONS')
-  addText(`Standard Input: 1 mg protein per tube. Mixing Ratio (Protein : Linker : Oligo): 1 : ${lr} : ${or_}`, { size: 8, color: GRAY })
+  addText(`Standard Input: ${inputMg} mg protein per tube. Mixing Ratio (Protein : Linker : Oligo): 1 : ${lr} : ${or_}`, { size: 8, color: GRAY })
   y += 2
 
   addSubsection('2.1 Protein & Adapter Properties')
@@ -253,7 +254,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
   addTable(
     [['Variant', 'Protein (nmol)', 'Linker (nmol)', 'Linker Vol (µL)', 'Oligo (nmol)', 'Oligo Vol (µL)']],
     allVariants.map(v => {
-      const vols = calcVariantVolumes(v.mwProtein, lr, or_)
+      const vols = calcVariantVolumes(v.mwProtein, lr, or_, inputMg)
       return [v.name, vols.proteinAmount.toFixed(1), vols.linkerAmount.toFixed(1), vols.linkerVolume.toFixed(1), vols.oligoAmount.toFixed(1), vols.oligoVolume.toFixed(0)]
     })
   )
