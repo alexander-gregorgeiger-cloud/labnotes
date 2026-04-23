@@ -68,6 +68,16 @@ export const ADAPTER_VARIANTS: AdapterVariant[] = [
   },
 ]
 
+// ── Custom Adapter Definition ────────────────────────────────────────
+
+export interface CustomAdapterDef {
+  name: string
+  mwProtein: number    // kDa
+  mwAdapter: number    // kDa
+  e280Protein: number  // M⁻¹cm⁻¹
+  e280Adapter: number  // M⁻¹cm⁻¹
+}
+
 // ── Record Data Structures ───────────────────────────────────────────
 
 export interface TubeData {
@@ -175,7 +185,12 @@ export interface ConjugationRecord {
   // Section 11.4 - Storage
   storageLocation: string
   calculatedExpiry: string
-  // Tubes (1-5)
+  // Custom adapters (user-defined, per record)
+  customAdapters: CustomAdapterDef[]
+  // Mixing ratio Protein : Linker : Oligo (protein is always 1)
+  mixingRatioLinker: number   // default 2
+  mixingRatioOligo: number    // default 2.5
+  // Tubes (1-15)
   tubeCount: number
   tubes: TubeData[]
   // Procedure checklists (section 4, 6, 7, 8, 9)
@@ -326,3 +341,43 @@ export function calcOligoConcentrationUm(ngPerUl: number | null, mwKda: number):
 
 // Standard oligo MW for reconstitution QC (can be adjusted)
 export const OLIGO_MW_KDA = 6.8
+
+// ── Ratio-Aware Volume Helpers ───────────────────────────────────────
+
+/**
+ * Compute pre-calculated nmol / µL volumes for 1 mg protein input
+ * at the given mixing ratios.
+ *   linkerVolume: µL based on 1 mM (1 nmol/µL) linker stock
+ *   oligoVolume:  µL based on 100 µM (0.1 nmol/µL) oligo stock
+ */
+export function calcVariantVolumes(
+  mwProtein: number,
+  linkerRatio: number,
+  oligoRatio: number
+): { proteinAmount: number; linkerAmount: number; linkerVolume: number; oligoAmount: number; oligoVolume: number } {
+  const proteinAmount = 1000 / mwProtein
+  const linkerAmount  = proteinAmount * linkerRatio
+  const linkerVolume  = linkerAmount               // µL (1 mM stock)
+  const oligoAmount   = proteinAmount * oligoRatio
+  const oligoVolume   = oligoAmount * 10           // µL (100 µM stock)
+  return { proteinAmount, linkerAmount, linkerVolume, oligoAmount, oligoVolume }
+}
+
+/**
+ * Returns all adapter variants for a record — built-in ADAPTER_VARIANTS
+ * first, then any user-defined custom adapters (with volumes computed
+ * from the record's current mixing ratios).
+ */
+export function getAllVariants(record: {
+  customAdapters?: CustomAdapterDef[]
+  mixingRatioLinker?: number
+  mixingRatioOligo?: number
+}): AdapterVariant[] {
+  const lr = record.mixingRatioLinker ?? 2
+  const or_ = record.mixingRatioOligo ?? 2.5
+  const custom: AdapterVariant[] = (record.customAdapters || []).map(c => ({
+    ...c,
+    ...calcVariantVolumes(c.mwProtein, lr, or_),
+  }))
+  return [...ADAPTER_VARIANTS, ...custom]
+}

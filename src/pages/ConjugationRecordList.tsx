@@ -62,6 +62,9 @@ export default function ConjugationRecordList() {
       const commonMaterials = DEFAULT_COMMON_MATERIALS.map(m => ({ ...m }))
       const docRef = await addDoc(collection(firestore, 'users', user.uid, 'conjugationRecords'), {
         name: name.trim(),
+        customAdapters: [],
+        mixingRatioLinker: 2,
+        mixingRatioOligo: 2.5,
         dateStarted: '',
         dateFinished: '',
         preparedBy: '',

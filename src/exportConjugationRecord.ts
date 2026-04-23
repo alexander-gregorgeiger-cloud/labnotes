@@ -1,7 +1,6 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import {
-  ADAPTER_VARIANTS,
   CHECKLIST_ITEMS,
   OLIGO_MW_KDA,
   median3,
@@ -10,12 +9,14 @@ import {
   calcYieldPercent,
   calcDilutionVolume,
   calcOligoConcentrationUm,
+  getAllVariants,
+  calcVariantVolumes,
   type ConjugationRecord,
   type AdapterVariant,
 } from './conjugationRecord'
 
-function getVariant(name: string): AdapterVariant | undefined {
-  return ADAPTER_VARIANTS.find(v => v.name === name)
+function getVariant(name: string, record: ConjugationRecord): AdapterVariant | undefined {
+  return getAllVariants(record).find(v => v.name === name)
 }
 
 function fmt(v: number | null, decimals = 2): string {
@@ -234,26 +235,33 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
   )
 
   // ── Section 2 ──
+  const lr = r.mixingRatioLinker ?? 2
+  const or_ = r.mixingRatioOligo ?? 2.5
+  const allVariants = getAllVariants(r)
+
   addSectionHeader(2, 'ADAPTER SPECIFICATIONS')
-  addText('Standard Input: 1 mg protein per tube. Mixing Ratio (Protein : Linker : Oligo): 1 : 2 : 2.5', { size: 8, color: GRAY })
+  addText(`Standard Input: 1 mg protein per tube. Mixing Ratio (Protein : Linker : Oligo): 1 : ${lr} : ${or_}`, { size: 8, color: GRAY })
   y += 2
 
   addSubsection('2.1 Protein & Adapter Properties')
   addTable(
     [['Adapter Variant', 'MW Protein (kDa)', 'MW Adapter (kDa)', 'ε₂₈₀ Protein', 'ε₂₈₀ Adapter']],
-    ADAPTER_VARIANTS.map(v => [v.name, String(v.mwProtein), String(v.mwAdapter), v.e280Protein.toLocaleString(), v.e280Adapter.toLocaleString()])
+    allVariants.map(v => [v.name, String(v.mwProtein), String(v.mwAdapter), v.e280Protein.toLocaleString(), v.e280Adapter.toLocaleString()])
   )
 
   addSubsection('2.2 Pre-Calculated Volumes per Tube (1 mg Input)')
   addTable(
     [['Variant', 'Protein (nmol)', 'Linker (nmol)', 'Linker Vol (µL)', 'Oligo (nmol)', 'Oligo Vol (µL)']],
-    ADAPTER_VARIANTS.map(v => [v.name, String(v.proteinAmount), String(v.linkerAmount), String(v.linkerVolume), String(v.oligoAmount), String(v.oligoVolume)])
+    allVariants.map(v => {
+      const vols = calcVariantVolumes(v.mwProtein, lr, or_)
+      return [v.name, vols.proteinAmount.toFixed(1), vols.linkerAmount.toFixed(1), vols.linkerVolume.toFixed(1), vols.oligoAmount.toFixed(1), vols.oligoVolume.toFixed(0)]
+    })
   )
 
   addSubsection('2.3 Acceptance Criteria')
   addTable(
     [['Variant', 'Min Yield (%)', 'Activity (%)', 'k_off (s⁻¹)']],
-    ADAPTER_VARIANTS.map(v => {
+    allVariants.map(v => {
       const ac = r.acceptanceCriteria?.[v.name]
       return [v.name, ac?.minYield != null ? String(ac.minYield) : '—', ac?.activity != null ? String(ac.activity) : '—', ac?.koff != null ? String(ac.koff) : '—']
     })
@@ -304,7 +312,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     [['Tube', 'M1', 'M2', 'M3', 'Median (mg/mL)', 'Vol (µL)', 'Mass (µg)', 'Amount (nmol)', '≥ 900 µg?']],
     tubeNums.map(i => {
       const t = r.tubes[i]
-      const variant = getVariant(t.adapterVariant)
+      const variant = getVariant(t.adapterVariant, r)
       const med = median3(t.postExM1, t.postExM2, t.postExM3)
       const vol = t.postExVolume ?? t.recoveredVolume
       const mass = calcTotalMassUg(med, vol)
@@ -381,7 +389,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     [['Tube', 'M1', 'M2', 'M3', 'Median (mg/mL)', 'Vol (µL)', 'Mass (µg)', 'MW Adapt (kDa)', 'Amount (nmol)']],
     tubeNums.map(i => {
       const t = r.tubes[i]
-      const variant = getVariant(t.adapterVariant)
+      const variant = getVariant(t.adapterVariant, r)
       const med = median3(t.finalM1, t.finalM2, t.finalM3)
       const vol = t.finalVolume ?? t.finalRecoveredVolume
       const mass = calcTotalMassUg(med, vol)
@@ -397,7 +405,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     [['Tube', 'Amount (nmol)', 'Target Volume (µL)', 'Current Volume (µL)', 'Buffer to Add (µL)']],
     tubeNums.map(i => {
       const t = r.tubes[i]
-      const variant = getVariant(t.adapterVariant)
+      const variant = getVariant(t.adapterVariant, r)
       const med = median3(t.finalM1, t.finalM2, t.finalM3)
       const vol = t.finalVolume ?? t.finalRecoveredVolume
       const mass = calcTotalMassUg(med, vol)
@@ -429,7 +437,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     [['Tube', 'Adapter', 'Start (nmol)', 'Final (nmol)', 'Yield %', 'Spec', 'Status']],
     tubeNums.map(i => {
       const t = r.tubes[i]
-      const variant = getVariant(t.adapterVariant)
+      const variant = getVariant(t.adapterVariant, r)
       const postMed = median3(t.postExM1, t.postExM2, t.postExM3)
       const postVol = t.postExVolume ?? t.recoveredVolume
       const postMass = calcTotalMassUg(postMed, postVol)

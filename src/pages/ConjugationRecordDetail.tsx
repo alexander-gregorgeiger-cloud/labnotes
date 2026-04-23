@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { doc, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, ChevronDown, ChevronRight, ClipboardList, Check, X, AlertTriangle, Download, MessageSquare } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, ClipboardList, Check, X, AlertTriangle, Download, MessageSquare, Plus, Trash2 } from 'lucide-react'
 import { exportConjugationRecordPDF } from '../exportConjugationRecord'
 import {
   ADAPTER_VARIANTS,
@@ -17,17 +17,20 @@ import {
   calcDilutionVolume,
   calcOligoConcentrationUm,
   createDefaultTube,
+  getAllVariants,
+  calcVariantVolumes,
   type ConjugationRecord,
   type TubeData,
   type CommonMaterial,
   type OligoReconstitution,
   type AdapterVariant,
+  type CustomAdapterDef,
 } from '../conjugationRecord'
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function getVariant(name: string): AdapterVariant | undefined {
-  return ADAPTER_VARIANTS.find(v => v.name === name)
+function getVariant(name: string, record: ConjugationRecord): AdapterVariant | undefined {
+  return getAllVariants(record).find(v => v.name === name)
 }
 
 // ── Section Wrapper ──────────────────────────────────────────────────
@@ -300,6 +303,32 @@ export default function ConjugationRecordDetail() {
     save({ tubeCount: n, tubes })
   }
 
+  // Custom adapter management
+  function updateCustomAdapter(index: number, field: keyof CustomAdapterDef, value: string | number) {
+    if (!record) return
+    const customAdapters = [...(record.customAdapters || [])]
+    customAdapters[index] = { ...customAdapters[index], [field]: value }
+    setRecord({ ...record, customAdapters })
+    save({ customAdapters })
+  }
+
+  function addCustomAdapter() {
+    if (!record) return
+    const customAdapters = [...(record.customAdapters || []), {
+      name: `Custom ${(record.customAdapters || []).length + 1}`,
+      mwProtein: 0, mwAdapter: 0, e280Protein: 0, e280Adapter: 0,
+    }]
+    setRecord({ ...record, customAdapters })
+    save({ customAdapters })
+  }
+
+  function removeCustomAdapter(index: number) {
+    if (!record) return
+    const customAdapters = (record.customAdapters || []).filter((_, i) => i !== index)
+    setRecord({ ...record, customAdapters })
+    save({ customAdapters })
+  }
+
   // Update acceptance criteria
   function updateAcceptance(variant: string, field: string, value: number | null) {
     if (!record) return
@@ -392,9 +421,18 @@ export default function ConjugationRecordDetail() {
                   className="flex-1 px-2.5 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light"
                 >
                   <option value="">Select adapter...</option>
-                  {ADAPTER_VARIANTS.map(v => (
-                    <option key={v.name} value={v.name}>{v.name}</option>
-                  ))}
+                  <optgroup label="Built-in">
+                    {ADAPTER_VARIANTS.map(v => (
+                      <option key={v.name} value={v.name}>{v.name}</option>
+                    ))}
+                  </optgroup>
+                  {(r.customAdapters || []).length > 0 && (
+                    <optgroup label="Custom">
+                      {(r.customAdapters || []).map(v => (
+                        <option key={v.name} value={v.name}>{v.name}</option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
                 <TextInput value={r.tubes[i]?.oligoId || ''} onChange={v => updateTube(i, 'oligoId', v)} placeholder="Oligo ID" className="w-24" />
                 <TextInput value={r.tubes[i]?.lotNumber || ''} onChange={v => updateTube(i, 'lotNumber', v)} placeholder="Lot #" className="w-28" />
@@ -406,8 +444,35 @@ export default function ConjugationRecordDetail() {
         {/* ── Section 2: Adapter Specifications ── */}
         <Section num={2} title="Adapter Specifications" comment={r.sectionComments?.['s2']} onCommentChange={v => updateComment('s2', v)}>
           <div className="mt-3">
-            <p className="text-xs text-slate-500 mb-2">Standard Input: 1 mg protein per tube. Ratio (Protein : Linker : Oligo) = 1 : 2 : 2.5</p>
 
+            {/* 2.0 Mixing Ratio */}
+            <h3 className="text-sm font-semibold text-slate-700 mb-1">2.0 Mixing Ratio</h3>
+            <p className="text-xs text-slate-500 mb-2">Standard input: 1 mg protein per tube.</p>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-xs text-slate-500 font-medium">Protein : Linker : Oligo</span>
+              <span className="text-xs text-slate-400">=</span>
+              <span className="w-9 text-center text-sm font-medium text-slate-700">1</span>
+              <span className="text-xs text-slate-400">:</span>
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={r.mixingRatioLinker ?? 2}
+                onChange={e => updateField('mixingRatioLinker', parseFloat(e.target.value) || 2)}
+                className="w-16 text-center px-2 py-1 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light"
+              />
+              <span className="text-xs text-slate-400">:</span>
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={r.mixingRatioOligo ?? 2.5}
+                onChange={e => updateField('mixingRatioOligo', parseFloat(e.target.value) || 2.5)}
+                className="w-16 text-center px-2 py-1 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light"
+              />
+            </div>
+
+            {/* 2.1 Protein & Adapter Properties */}
             <h3 className="text-sm font-semibold text-slate-700 mb-2">2.1 Protein & Adapter Properties</h3>
             <div className="overflow-x-auto -mx-4 px-4">
               <table className="w-full text-xs border-collapse">
@@ -421,6 +486,7 @@ export default function ConjugationRecordDetail() {
                   </tr>
                 </thead>
                 <tbody>
+                  {/* Built-in variants (read-only) */}
                   {ADAPTER_VARIANTS.map(v => (
                     <tr key={v.name} className="border-b border-slate-100">
                       <td className="px-2 py-1.5 font-medium">{v.name}</td>
@@ -430,10 +496,49 @@ export default function ConjugationRecordDetail() {
                       <td className="px-2 py-1.5 text-right font-mono">{v.e280Adapter.toLocaleString()}</td>
                     </tr>
                   ))}
+                  {/* Custom adapters (editable) */}
+                  {(r.customAdapters || []).map((c, i) => (
+                    <tr key={`custom-${i}`} className="border-b border-primary/20 bg-primary/5">
+                      <td className="px-1 py-1">
+                        <input
+                          type="text"
+                          value={c.name}
+                          onChange={e => updateCustomAdapter(i, 'name', e.target.value)}
+                          placeholder="Name"
+                          className="w-full bg-transparent border border-primary/30 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary-light"
+                        />
+                      </td>
+                      <td className="px-1 py-1">
+                        <input type="number" step="any" value={c.mwProtein || ''} onChange={e => updateCustomAdapter(i, 'mwProtein', parseFloat(e.target.value) || 0)} placeholder="kDa" className="w-full bg-transparent border border-primary/30 rounded px-1.5 py-0.5 text-xs text-right font-mono focus:outline-none focus:ring-1 focus:ring-primary-light" />
+                      </td>
+                      <td className="px-1 py-1">
+                        <input type="number" step="any" value={c.mwAdapter || ''} onChange={e => updateCustomAdapter(i, 'mwAdapter', parseFloat(e.target.value) || 0)} placeholder="kDa" className="w-full bg-transparent border border-primary/30 rounded px-1.5 py-0.5 text-xs text-right font-mono focus:outline-none focus:ring-1 focus:ring-primary-light" />
+                      </td>
+                      <td className="px-1 py-1">
+                        <input type="number" step="any" value={c.e280Protein || ''} onChange={e => updateCustomAdapter(i, 'e280Protein', parseFloat(e.target.value) || 0)} placeholder="M⁻¹cm⁻¹" className="w-full bg-transparent border border-primary/30 rounded px-1.5 py-0.5 text-xs text-right font-mono focus:outline-none focus:ring-1 focus:ring-primary-light" />
+                      </td>
+                      <td className="px-1 py-1">
+                        <div className="flex items-center gap-1">
+                          <input type="number" step="any" value={c.e280Adapter || ''} onChange={e => updateCustomAdapter(i, 'e280Adapter', parseFloat(e.target.value) || 0)} placeholder="M⁻¹cm⁻¹" className="flex-1 min-w-0 bg-transparent border border-primary/30 rounded px-1.5 py-0.5 text-xs text-right font-mono focus:outline-none focus:ring-1 focus:ring-primary-light" />
+                          <button onClick={() => removeCustomAdapter(i)} className="shrink-0 text-red-400 hover:text-red-600 transition-colors">
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
+            <button
+              onClick={addCustomAdapter}
+              className="mt-2 flex items-center gap-1 text-xs text-primary font-medium hover:text-primary-dark transition-colors"
+            >
+              <Plus className="w-3 h-3" />
+              Add Custom Adapter
+            </button>
 
+            {/* 2.2 Pre-Calculated Volumes (dynamic — recalculates with ratio) */}
             <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">2.2 Pre-Calculated Volumes (1 mg input)</h3>
             <div className="overflow-x-auto -mx-4 px-4">
               <table className="w-full text-xs border-collapse">
@@ -447,25 +552,30 @@ export default function ConjugationRecordDetail() {
                   </tr>
                 </thead>
                 <tbody>
-                  {ADAPTER_VARIANTS.map(v => (
-                    <tr key={v.name} className="border-b border-slate-100">
-                      <td className="px-2 py-1.5 font-medium">{v.name}</td>
-                      <td className="px-2 py-1.5 text-right font-mono">{v.proteinAmount}</td>
-                      <td className="px-2 py-1.5 text-right font-mono">{v.linkerVolume}</td>
-                      <td className="px-2 py-1.5 text-right font-mono">{v.oligoAmount}</td>
-                      <td className="px-2 py-1.5 text-right font-mono">{v.oligoVolume}</td>
-                    </tr>
-                  ))}
+                  {getAllVariants(r).map(v => {
+                    const vols = calcVariantVolumes(v.mwProtein, r.mixingRatioLinker ?? 2, r.mixingRatioOligo ?? 2.5)
+                    const isCustom = !(ADAPTER_VARIANTS.some(bv => bv.name === v.name))
+                    return (
+                      <tr key={v.name} className={`border-b border-slate-100 ${isCustom ? 'bg-primary/5' : ''}`}>
+                        <td className="px-2 py-1.5 font-medium">{v.name}</td>
+                        <td className="px-2 py-1.5 text-right font-mono">{vols.proteinAmount.toFixed(1)}</td>
+                        <td className="px-2 py-1.5 text-right font-mono">{vols.linkerVolume.toFixed(1)}</td>
+                        <td className="px-2 py-1.5 text-right font-mono">{vols.oligoAmount.toFixed(1)}</td>
+                        <td className="px-2 py-1.5 text-right font-mono">{vols.oligoVolume.toFixed(0)}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
 
+            {/* 2.3 Acceptance Criteria */}
             <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">2.3 Acceptance Criteria</h3>
-            {ADAPTER_VARIANTS.map(v => {
+            {getAllVariants(r).map(v => {
               const ac = r.acceptanceCriteria?.[v.name] || { minYield: null, activity: null, koff: null }
               return (
                 <div key={v.name} className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-medium text-slate-600 w-28 shrink-0">{v.name}</span>
+                  <span className="text-xs font-medium text-slate-600 w-28 shrink-0 truncate">{v.name}</span>
                   <NumInput label="" value={ac.minYield} onChange={val => updateAcceptance(v.name, 'minYield', val)} placeholder="Min %" unit="% yield" />
                   <NumInput label="" value={ac.activity} onChange={val => updateAcceptance(v.name, 'activity', val)} placeholder="Activity" unit="%" />
                   <NumInput label="" value={ac.koff} onChange={val => updateAcceptance(v.name, 'koff', val)} placeholder="k_off" unit="s⁻¹" />
@@ -547,7 +657,7 @@ export default function ConjugationRecordDetail() {
             <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. 3 measurements per tube.</p>
             {tubeNums.map(i => {
               const t = r.tubes[i]
-              const variant = getVariant(t.adapterVariant)
+              const variant = getVariant(t.adapterVariant, r)
               const medianConc = median3(t.postExM1, t.postExM2, t.postExM3)
               const vol = t.postExVolume ?? t.recoveredVolume
               const totalMass = calcTotalMassUg(medianConc, vol)
@@ -691,7 +801,7 @@ export default function ConjugationRecordDetail() {
             <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. Use ε₂₈₀ Adapter (not Protein).</p>
             {tubeNums.map(i => {
               const t = r.tubes[i]
-              const variant = getVariant(t.adapterVariant)
+              const variant = getVariant(t.adapterVariant, r)
               const medianConc = median3(t.finalM1, t.finalM2, t.finalM3)
               const vol = t.finalVolume ?? t.finalRecoveredVolume
               const totalMass = calcTotalMassUg(medianConc, vol)
@@ -725,7 +835,7 @@ export default function ConjugationRecordDetail() {
             <h3 className="text-sm font-semibold text-slate-700 mb-2">11.1 Dilution to 2.6 µM</h3>
             {tubeNums.map(i => {
               const t = r.tubes[i]
-              const variant = getVariant(t.adapterVariant)
+              const variant = getVariant(t.adapterVariant, r)
               const medianConc = median3(t.finalM1, t.finalM2, t.finalM3)
               const vol = t.finalVolume ?? t.finalRecoveredVolume
               const totalMass = calcTotalMassUg(medianConc, vol)
@@ -770,7 +880,7 @@ export default function ConjugationRecordDetail() {
             <h3 className="text-sm font-semibold text-slate-700 mb-2">12.1 Yield Assessment</h3>
             {tubeNums.map(i => {
               const t = r.tubes[i]
-              const variant = getVariant(t.adapterVariant)
+              const variant = getVariant(t.adapterVariant, r)
               // Start amount from Section 5
               const postMedian = median3(t.postExM1, t.postExM2, t.postExM3)
               const postVol = t.postExVolume ?? t.recoveredVolume
