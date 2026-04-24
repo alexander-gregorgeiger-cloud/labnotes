@@ -1,24 +1,44 @@
 import { useState } from 'react'
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth'
-import { auth } from '../firebase'
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'
+import { doc, setDoc, updateDoc, Timestamp } from 'firebase/firestore'
+import { auth, firestore } from '../firebase'
 import { FlaskConical } from 'lucide-react'
+import type { UserProfile } from '../AuthContext'
 
 export default function Login() {
   const [isSignUp, setIsSignUp] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [info, setInfo] = useState('')
   const [loading, setLoading] = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+    setInfo('')
     setLoading(true)
     try {
       if (isSignUp) {
-        await createUserWithEmailAndPassword(auth, email, password)
+        const cred = await createUserWithEmailAndPassword(auth, email, password)
+        const now = Timestamp.now()
+        const profile: UserProfile = {
+          email: cred.user.email || email,
+          createdAt: now,
+          lastLoginAt: now,
+          status: 'active',
+          role: 'user',
+        }
+        await setDoc(doc(firestore, 'users', cred.user.uid), profile)
       } else {
-        await signInWithEmailAndPassword(auth, email, password)
+        const cred = await signInWithEmailAndPassword(auth, email, password)
+        // Best-effort: update lastLoginAt. Ignore errors (e.g. if profile doesn't exist yet — AuthContext will create it).
+        try {
+          await updateDoc(doc(firestore, 'users', cred.user.uid), { lastLoginAt: Timestamp.now() })
+        } catch {
+          // Ignore — profile may not exist; AuthContext handles auto-creation.
+        }
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'An error occurred'
@@ -35,6 +55,32 @@ export default function Login() {
       }
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleForgotPassword() {
+    setError('')
+    setInfo('')
+    if (!email) {
+      setError('Enter your email first, then click "Forgot password?"')
+      return
+    }
+    setResetLoading(true)
+    try {
+      await sendPasswordResetEmail(auth, email)
+      setInfo('Password reset email sent. Check your inbox.')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'An error occurred'
+      if (message.includes('user-not-found')) {
+        // Don't leak account existence
+        setInfo('If an account exists for this email, a reset link has been sent.')
+      } else if (message.includes('invalid-email')) {
+        setError('Please enter a valid email')
+      } else {
+        setError(message)
+      }
+    } finally {
+      setResetLoading(false)
     }
   }
 
@@ -57,6 +103,11 @@ export default function Login() {
               {error}
             </div>
           )}
+          {info && (
+            <div className="bg-green-50 text-green-700 text-sm px-3 py-2 rounded-lg mb-4">
+              {info}
+            </div>
+          )}
 
           <input
             type="email"
@@ -73,8 +124,21 @@ export default function Login() {
             onChange={e => setPassword(e.target.value)}
             required
             minLength={6}
-            className="w-full px-3 py-2.5 border border-slate-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-primary-light focus:border-transparent text-base"
+            className="w-full px-3 py-2.5 border border-slate-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-primary-light focus:border-transparent text-base"
           />
+
+          {!isSignUp && (
+            <div className="text-right mb-3">
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={resetLoading}
+                className="text-xs text-primary font-medium hover:text-primary-dark disabled:opacity-50"
+              >
+                {resetLoading ? 'Sending...' : 'Forgot password?'}
+              </button>
+            </div>
+          )}
 
           <button
             type="submit"
@@ -88,7 +152,7 @@ export default function Login() {
             {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
             <button
               type="button"
-              onClick={() => { setIsSignUp(!isSignUp); setError('') }}
+              onClick={() => { setIsSignUp(!isSignUp); setError(''); setInfo('') }}
               className="text-primary font-medium hover:text-primary-dark"
             >
               {isSignUp ? 'Sign In' : 'Sign Up'}

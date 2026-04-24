@@ -4,7 +4,7 @@ import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, getDocs
 import { signOut } from 'firebase/auth'
 import { firestore, auth } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { Plus, FlaskConical, Trash2, FolderOpen, LogOut, Calculator, Lightbulb, StickyNote, ChevronRight, LayoutGrid, BookOpen, RefreshCw, ClipboardList, TestTubes } from 'lucide-react'
+import { Plus, FlaskConical, Trash2, FolderOpen, LogOut, Calculator, Lightbulb, StickyNote, ChevronRight, LayoutGrid, BookOpen, RefreshCw, ClipboardList, TestTubes, Shield } from 'lucide-react'
 import type { Project } from '../db'
 import BeaverLogo from '../components/BeaverLogo'
 
@@ -17,7 +17,7 @@ export default function ProjectList() {
   const [updating, setUpdating] = useState(false)
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'found' | 'current'>('idle')
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
 
   async function checkForUpdate() {
     setUpdating(true)
@@ -129,6 +129,15 @@ export default function ProjectList() {
           >
             <RefreshCw className={`w-4 h-4 ${updating ? 'animate-spin' : ''}`} />
           </button>
+          {profile?.role === 'admin' && (
+            <button
+              onClick={() => navigate('/admin')}
+              className="w-10 h-10 text-primary hover:bg-primary/10 rounded-full flex items-center justify-center transition-colors"
+              title="User administration"
+            >
+              <Shield className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={() => signOut(auth)}
             className="w-10 h-10 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full flex items-center justify-center transition-colors"

@@ -1,0 +1,71 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function profile(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function profileExists(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid));
+    }
+
+    function isActive(uid) {
+      return profileExists(uid) && profile(uid).status == 'active';
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && profileExists(request.auth.uid)
+        && profile(request.auth.uid).role == 'admin';
+    }
+
+    // ── /users/{uid} ─────────────────────────────────────────────────
+    match /users/{uid} {
+      // Read: the user themselves, or any admin
+      allow read: if isOwner(uid) || isAdmin();
+
+      // List (for Admin page): admins only
+      allow list: if isAdmin();
+
+      // Create: only on self signup, with safe defaults (cannot self-promote or self-unblock-while-blocked)
+      allow create: if isOwner(uid)
+        && request.resource.data.status == 'active'
+        && request.resource.data.role == 'user'
+        && request.resource.data.email == request.auth.token.email;
+
+      // Update:
+      //   - Admin: may change any field
+      //   - Self: may only touch lastLoginAt (not status, role, email, createdAt)
+      allow update: if isAdmin()
+        || (isOwner(uid)
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['lastLoginAt']));
+
+      // Delete: admin only
+      allow delete: if isAdmin();
+    }
+
+    // ── User-scoped subcollections ──────────────────────────────────
+    // Everything lives under /users/{uid}/{collection}/{doc}.
+    // Only the owner can access, and only if their profile is active.
+    match /users/{uid}/{subcollection}/{docId} {
+      allow read, write: if isOwner(uid) && isActive(uid);
+    }
+
+    // Deeper nested docs (e.g. /users/{uid}/projects/{pid}/xxx/...) — same rule.
+    match /users/{uid}/{subcollection}/{docId}/{rest=**} {
+      allow read, write: if isOwner(uid) && isActive(uid);
+    }
+  }
+}
