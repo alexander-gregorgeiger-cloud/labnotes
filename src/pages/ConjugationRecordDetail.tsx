@@ -201,6 +201,20 @@ export default function ConjugationRecordDetail() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
+  // Draft strings for numeric inputs that must be clearable before retyping
+  const [inputMassDraft, setInputMassDraft] = useState('')
+  const [linkerRatioDraft, setLinkerRatioDraft] = useState('')
+  const [oligoRatioDraft, setOligoRatioDraft] = useState('')
+
+  // Sync drafts when the record first loads (keyed on record id so re-opens reset correctly)
+  useEffect(() => {
+    if (!record) return
+    setInputMassDraft(String(record.inputMassPerTube ?? 1))
+    setLinkerRatioDraft(String(record.mixingRatioLinker ?? 2))
+    setOligoRatioDraft(String(record.mixingRatioOligo ?? 2.5))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record?.id])
+
   // Load record
   useEffect(() => {
     if (!user || !id) return
@@ -457,8 +471,13 @@ export default function ConjugationRecordDetail() {
                 type="number"
                 step="0.1"
                 min="0"
-                value={r.mixingRatioLinker ?? 2}
-                onChange={e => updateField('mixingRatioLinker', parseFloat(e.target.value) || 2)}
+                value={linkerRatioDraft}
+                onChange={e => setLinkerRatioDraft(e.target.value)}
+                onBlur={() => {
+                  const val = parseFloat(linkerRatioDraft)
+                  if (!isNaN(val) && val >= 0) updateField('mixingRatioLinker', val)
+                  else setLinkerRatioDraft(String(r.mixingRatioLinker ?? 2))
+                }}
                 className="w-16 text-center px-2 py-1 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light"
               />
               <span className="text-xs text-slate-400">:</span>
@@ -466,8 +485,13 @@ export default function ConjugationRecordDetail() {
                 type="number"
                 step="0.1"
                 min="0"
-                value={r.mixingRatioOligo ?? 2.5}
-                onChange={e => updateField('mixingRatioOligo', parseFloat(e.target.value) || 2.5)}
+                value={oligoRatioDraft}
+                onChange={e => setOligoRatioDraft(e.target.value)}
+                onBlur={() => {
+                  const val = parseFloat(oligoRatioDraft)
+                  if (!isNaN(val) && val >= 0) updateField('mixingRatioOligo', val)
+                  else setOligoRatioDraft(String(r.mixingRatioOligo ?? 2.5))
+                }}
                 className="w-16 text-center px-2 py-1 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light"
               />
             </div>
@@ -547,8 +571,13 @@ export default function ConjugationRecordDetail() {
                   type="number"
                   step="0.1"
                   min="0.1"
-                  value={r.inputMassPerTube ?? 1}
-                  onChange={e => updateField('inputMassPerTube', parseFloat(e.target.value) || 1)}
+                  value={inputMassDraft}
+                  onChange={e => setInputMassDraft(e.target.value)}
+                  onBlur={() => {
+                    const val = parseFloat(inputMassDraft)
+                    if (!isNaN(val) && val > 0) updateField('inputMassPerTube', val)
+                    else setInputMassDraft(String(r.inputMassPerTube ?? 1))
+                  }}
                   className="w-16 text-center px-2 py-1 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light"
                 />
                 <span className="text-xs text-slate-400">mg</span>
