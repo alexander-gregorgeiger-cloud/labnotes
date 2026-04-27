@@ -591,8 +591,8 @@ export default function ThioLinkAnalysis() {
   const hasProteinDef = (parseFloat(proteinE280) || 0) > 0
   const hasOligoDef = (parseFloat(oligoE280) || 0) > 0 || (parseFloat(oligoE260) || 0) > 0
   const hasDefinitions = hasProteinDef && hasOligoDef
-  const hasControlData = controlComponents.some(c => parseFloat(c.av) > 0)
-  const hasTestData = testComponents.some(c => parseFloat(c.av) > 0)
+  const hasControlData = controlComponents.some(c => calcComponent(c).valid)
+  const hasTestData = testComponents.some(c => calcComponent(c).valid)
   const hasResults = hasControlData && hasTestData && hasDefinitions
 
   // Auto-compute missing ε values
