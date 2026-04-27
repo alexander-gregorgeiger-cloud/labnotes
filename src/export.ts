@@ -60,6 +60,7 @@ export async function exportProject(project: Project, notes: Note[]) {
     const legendOrder = [
       '#E53935', '#D4A574', '#FFEE58', '#42A5F5',
       '#EC407A', '#FFA726', '#AB47BC', '#9CCC65',
+      '#FFFFFF',
     ]
     const entries = legendOrder
       .filter(hex => project.colorLegend?.[hex])

@@ -15,6 +15,7 @@ const NOTE_COLORS = [
   { id: 'orange', hex: '#FFA726' },
   { id: 'purple', hex: '#AB47BC' },
   { id: 'green', hex: '#9CCC65' },
+  { id: 'white', hex: '#FFFFFF' },
 ]
 import { exportProject } from '../export'
 import type { Project, Note } from '../db'
