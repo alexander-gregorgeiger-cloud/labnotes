@@ -444,10 +444,10 @@ export default function ThioLinkAnalysis() {
       ? 1 - (nTestOligo / nControlOligo)
       : 0
 
-    // Product yield: mass of 1:1 conjugate / mass of pre-conjugation protein
+    // Product yield: moles of 1:1 conjugate / moles of pre-conjugation protein
     const oneToOneConj = conjugates.find(c => c.oligoRatio === '1')
-    const mOneToOne = oneToOneConj ? calcComponent(oneToOneConj).m : 0
-    const productYield = mControlProtein > 0 ? mOneToOne / mControlProtein : 0
+    const nOneToOne = oneToOneConj ? calcComponent(oneToOneConj).n : 0
+    const productYield = nControlProtein > 0 ? nOneToOne / nControlProtein : 0
 
     return { conjugationYield, recoveryYield, oligoRemovalYield, productYield, conjDetails, nControlProtein, mControlProtein }
   }
@@ -836,7 +836,7 @@ export default function ThioLinkAnalysis() {
               <div className="text-xl font-bold text-purple-700">
                 {(yields.productYield * 100).toFixed(1)}%
               </div>
-              <div className="text-[10px] text-slate-400">m₁:₁ / m_protein</div>
+              <div className="text-[10px] text-slate-400">n₁:₁ / n_protein</div>
             </div>
           </div>
 
