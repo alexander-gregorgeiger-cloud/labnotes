@@ -315,14 +315,14 @@ export default function ThioLinkAnalysis() {
     const mode = comp.inputMode || 'av'
 
     if (mode === 'cv') {
-      // Conc+Vol mode: n(nmol) = conc(mg/mL) × vol(µL) / MW(kDa)
-      // because 1 mg/mL × 1 µL = 1 µg, and 1 µg / 1 kDa = 1 nmol
+      // Conc+Vol mode: m(µg) = conc(mg/mL) × vol(µL); n(nmol) = m(µg) × 1000 / MW(Da)
+      // because 1 mg/mL × 1 µL = 1 µg, and 1 µg / 1 Da = 1000 nmol (or 1 µg / 1 kDa = 1 nmol)
       const conc = parseFloat(comp.conc || '') || 0
       const vol = parseFloat(comp.vol || '') || 0
       const mw = calcMW(comp.oligoRatio)
       if (conc === 0 || vol === 0 || mw === 0) return { n: 0, m: 0, valid: false }
       const mUg = conc * vol
-      const nNmol = mUg / mw
+      const nNmol = (mUg * 1000) / mw
       return { n: nNmol, m: mUg, valid: true }
     }
 
