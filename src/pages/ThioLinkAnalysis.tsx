@@ -444,7 +444,12 @@ export default function ThioLinkAnalysis() {
       ? 1 - (nTestOligo / nControlOligo)
       : 0
 
-    return { conjugationYield, recoveryYield, oligoRemovalYield, conjDetails, nControlProtein, mControlProtein }
+    // Product yield: mass of 1:1 conjugate / mass of pre-conjugation protein
+    const oneToOneConj = conjugates.find(c => c.oligoRatio === '1')
+    const mOneToOne = oneToOneConj ? calcComponent(oneToOneConj).m : 0
+    const productYield = mControlProtein > 0 ? mOneToOne / mControlProtein : 0
+
+    return { conjugationYield, recoveryYield, oligoRemovalYield, productYield, conjDetails, nControlProtein, mControlProtein }
   }
 
   function updateComponent(
@@ -556,6 +561,7 @@ export default function ThioLinkAnalysis() {
     csv += `\nConjugation Yield,${(yields.conjugationYield * 100).toFixed(1)}%\n`
     csv += `Recovery Yield,${(yields.recoveryYield * 100).toFixed(1)}%\n`
     csv += `Oligo Removal Yield,${(yields.oligoRemovalYield * 100).toFixed(1)}%\n`
+    csv += `Product Yield (1:1),${(yields.productYield * 100).toFixed(1)}%\n`
 
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
@@ -803,7 +809,7 @@ export default function ThioLinkAnalysis() {
       {hasResults && (
         <div className="bg-white rounded-2xl p-4 shadow-sm border-2 border-primary/20 mb-4">
           <h2 className="text-xs font-bold text-primary uppercase tracking-wide mb-3">Results Summary</h2>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="text-center bg-blue-50 rounded-xl p-3">
               <div className="text-xs text-slate-500 mb-1">Conjugation</div>
               <div className="text-xl font-bold text-primary">
@@ -824,6 +830,13 @@ export default function ThioLinkAnalysis() {
                 {(yields.oligoRemovalYield * 100).toFixed(1)}%
               </div>
               <div className="text-[10px] text-slate-400">yield</div>
+            </div>
+            <div className="text-center bg-purple-50 rounded-xl p-3">
+              <div className="text-xs text-slate-500 mb-1">Product (1:1)</div>
+              <div className="text-xl font-bold text-purple-700">
+                {(yields.productYield * 100).toFixed(1)}%
+              </div>
+              <div className="text-[10px] text-slate-400">m₁:₁ / m_protein</div>
             </div>
           </div>
 
