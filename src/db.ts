@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
+import type { AnalysisData } from './thiolinkCalc'
 
 export interface Project {
   id: string
@@ -9,12 +10,28 @@ export interface Project {
   updatedAt: Date
 }
 
+export interface ThioLinkSnapshot {
+  title: string
+  analysisData: AnalysisData
+  yields: {
+    conjugationYield: number
+    recoveryYield: number
+    oligoRemovalYield: number
+    productYield: number
+  }
+  capturedAt: Date
+}
+
 export interface Note {
   id: string
   projectId: string
   content: string
   imageData?: string
   color?: string
+  // Optional discriminator for special note types. Absent on plain notes.
+  type?: 'thiolink'
+  // Snapshot data for type === 'thiolink' notes.
+  thiolinkData?: ThioLinkSnapshot
   createdAt: Date
   updatedAt: Date
 }

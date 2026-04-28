@@ -1,20 +1,17 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore'
+import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, getDocs, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, Plus, Trash2, Save, Download, RotateCcw, ChevronDown, ChevronUp, BookOpen, FolderOpen } from 'lucide-react'
-
-interface Component {
-  id: string
-  name: string
-  oligoRatio: string // '0' for free protein, 'NA' for free oligo, '1','2',... for conjugates
-  av: string // A*V in mA*mL (used when inputMode === 'av')
-  inputMode?: 'av' | 'cv' | 'mv' // 'av' = A×V (default), 'cv' = conc(mg/mL) + vol, 'mv' = molarConc(µM) + vol
-  conc?: string // mg/mL (used when inputMode === 'cv')
-  molarConc?: string // µM (used when inputMode === 'mv')
-  vol?: string  // µL   (used when inputMode === 'cv' or 'mv')
-}
+import { ArrowLeft, Plus, Trash2, Save, Download, RotateCcw, ChevronDown, ChevronUp, BookOpen, FolderOpen, FolderPlus } from 'lucide-react'
+import {
+  type Component,
+  type AnalysisData,
+  calcEpsilon as utilCalcEpsilon,
+  calcMW as utilCalcMW,
+  calcComponent as utilCalcComponent,
+  calcYields as utilCalcYields,
+} from '../thiolinkCalc'
 
 // --- Standalone UI components (outside parent to prevent remounting on state change) ---
 
@@ -216,21 +213,6 @@ interface SavedAnalysis {
   data: AnalysisData
 }
 
-interface AnalysisData {
-  correctionFactor: string
-  pathLength: string
-  proteinName: string
-  proteinE280: string
-  proteinE260: string
-  proteinMW: string
-  oligoName: string
-  oligoE280: string
-  oligoE260: string
-  oligoMW: string
-  controlComponents: Component[]
-  testComponents: Component[]
-}
-
 let nextId = 1
 function makeId() { return `t${nextId++}` }
 
@@ -280,6 +262,14 @@ export default function ThioLinkAnalysis() {
   const [showEpsLibrary, setShowEpsLibrary] = useState(false)
   const [epsTarget, setEpsTarget] = useState<'protein' | 'oligo'>('protein')
 
+  // Embed-to-project modal
+  const [showEmbedModal, setShowEmbedModal] = useState(false)
+  const [embedTitle, setEmbedTitle] = useState('Conjugation Analysis')
+  const [embedProjects, setEmbedProjects] = useState<{ id: string; name: string }[]>([])
+  const [embedLoading, setEmbedLoading] = useState(false)
+  const [embedSaving, setEmbedSaving] = useState(false)
+  const [embedDone, setEmbedDone] = useState<string | null>(null)
+
   // Epsilon library
   interface EpsEntry { id: string; name: string; epsilon280: string; epsilon260: string; mw: string }
   const [epsLibrary, setEpsLibrary] = useState<EpsEntry[]>([])
@@ -325,131 +315,29 @@ export default function ThioLinkAnalysis() {
     return unsub
   }, [user])
 
-  // Calculate epsilon for a component based on oligo ratio
-  // Uses auto-computed ε₂₈₀ for oligo if not manually entered
+  // Build the AnalysisData snapshot from current state — used both by the
+  // util-backed calc wrappers below and by save/embed actions further down.
+  function getAnalysisData(): AnalysisData {
+    return {
+      correctionFactor, pathLength,
+      proteinName, proteinE280, proteinE260, proteinMW,
+      oligoName, oligoE280, oligoE260, oligoMW,
+      controlComponents, testComponents,
+    }
+  }
+
+  // Thin wrappers — delegate to the pure util in src/thiolinkCalc.ts.
   function calcEpsilon(oligoRatio: string): number {
-    const pE = parseFloat(proteinE280) || 0
-    const oE = parseFloat(oligoE280) || (parseFloat(oligoE260) || 0) * 0.5
-    const ratio = parseFloat(oligoRatio)
-    if (oligoRatio === 'NA') return oE
-    if (isNaN(ratio) || ratio === 0) return pE
-    return pE + ratio * oE
+    return utilCalcEpsilon(getAnalysisData(), oligoRatio)
   }
-
-  // Calculate MW for a component
   function calcMW(oligoRatio: string): number {
-    const pMW = parseFloat(proteinMW) || 0
-    const oMW = parseFloat(oligoMW) || 0
-    const ratio = parseFloat(oligoRatio)
-    if (oligoRatio === 'NA') return oMW
-    if (isNaN(ratio) || ratio === 0) return pMW
-    return pMW + ratio * oMW
+    return utilCalcMW(getAnalysisData(), oligoRatio)
   }
-
-  // Calculate n, c, m for a component
   function calcComponent(comp: Component) {
-    const mode = comp.inputMode || 'av'
-
-    if (mode === 'cv') {
-      // Conc+Vol mode: m(µg) = conc(mg/mL) × vol(µL); n(nmol) = m(µg) × 1000 / MW(Da)
-      // because 1 mg/mL × 1 µL = 1 µg, and 1 µg / 1 Da = 1000 nmol (or 1 µg / 1 kDa = 1 nmol)
-      const conc = parseFloat(comp.conc || '') || 0
-      const vol = parseFloat(comp.vol || '') || 0
-      const mw = calcMW(comp.oligoRatio)
-      if (conc === 0 || vol === 0 || mw === 0) return { n: 0, m: 0, valid: false }
-      const mUg = conc * vol
-      const nNmol = (mUg * 1000) / mw
-      return { n: nNmol, m: mUg, valid: true }
-    }
-
-    if (mode === 'mv') {
-      // Molar+Vol mode: n(nmol) = c(µM) × V(µL) / 1000; m(µg) = n(nmol) × MW(Da) / 1000
-      // because 1 µM = 1 nmol/mL = 1e-3 nmol/µL  →  µM × µL = nmol/1000
-      const cUm = parseFloat(comp.molarConc || '') || 0
-      const vol = parseFloat(comp.vol || '') || 0
-      const mw = calcMW(comp.oligoRatio)
-      if (cUm === 0 || vol === 0) return { n: 0, m: 0, valid: false }
-      const nNmol = (cUm * vol) / 1000
-      const mUg = mw > 0 ? (nNmol * mw) / 1e3 : 0
-      return { n: nNmol, m: mUg, valid: true }
-    }
-
-    // A×V mode (default)
-    const av = parseFloat(comp.av) || 0
-    const eps = calcEpsilon(comp.oligoRatio)
-    const l = parseFloat(pathLength) || 0.2
-    if (av === 0 || eps === 0 || l === 0) return { n: 0, m: 0, valid: false }
-    // A*V in mA·mL: 1 mA·mL = 1e-3 AU * 1e-3 L = 1e-6 AU·L
-    // n(mol) = A*V(mA·mL) * 1e-6 / (ε * l)
-    // n(nmol) = A*V(mA·mL) * 1e3 / (ε * l)
-    const nNmol = (av * 1e3) / (eps * l)
-    const mw = calcMW(comp.oligoRatio)
-    const mUg = nNmol * mw / 1e3 // nmol * g/mol / 1e3 = µg
-    return { n: nNmol, m: mUg, valid: true }
+    return utilCalcComponent(getAnalysisData(), comp)
   }
-
-  // Verify calculation matches spreadsheet:
-  // Control Nb: A*V=80, eps=62015, l=0.2 → n = 80*1000/(62015*0.2) = 80000/12403 = 6.450 nmol ✓
-  // Control Oligo: A*V=530, eps=138193.5, l=0.2 → n = 530000/27638.7 = 19.176 nmol ✓
-
-  // Calculate yields
   function calcYields() {
-    const controlProtein = controlComponents.find(c => c.oligoRatio === '0')
-    const controlOligo = controlComponents.find(c => c.oligoRatio === 'NA')
-    const testProtein = testComponents.find(c => c.oligoRatio === '0')
-    const testOligo = testComponents.find(c => c.oligoRatio === 'NA')
-    const conjugates = testComponents.filter(c => c.oligoRatio !== '0' && c.oligoRatio !== 'NA')
-
-    const nControlProtein = controlProtein ? calcComponent(controlProtein).n : 0
-    const mControlProtein = controlProtein ? calcComponent(controlProtein).m : 0
-    const nControlOligo = controlOligo ? calcComponent(controlOligo).n : 0
-    const nTestProtein = testProtein ? calcComponent(testProtein).n : 0
-    const nTestOligo = testOligo ? calcComponent(testOligo).n : 0
-
-    // Total conjugate moles
-    let totalConjN = 0
-    const pMW = parseFloat(proteinMW) || 0
-    const conjDetails: { name: string; n: number; m: number; conjYield: number; recYield: number }[] = []
-
-    for (const conj of conjugates) {
-      const r = calcComponent(conj)
-      totalConjN += r.n
-    }
-
-    const totalTestN = nTestProtein + totalConjN
-
-    // Build per-conjugate details (needs totalTestN, so second pass)
-    for (const conj of conjugates) {
-      const r = calcComponent(conj)
-      const proteinMassRecovered = r.n * pMW / 1e3
-      conjDetails.push({
-        name: conj.name,
-        n: r.n,
-        m: r.m,
-        conjYield: totalTestN > 0 ? r.n / totalTestN : 0,
-        recYield: mControlProtein > 0 ? proteinMassRecovered / mControlProtein : 0,
-      })
-    }
-
-    // Conjugation yield: fraction of recovered protein moles that are conjugated
-    const conjugationYield = totalTestN > 0 ? totalConjN / totalTestN : 0
-
-    // Recovery yield: total recovered protein mass vs control input
-    // Uses protein MW for all species (tracks original protein recovery)
-    const totalRecoveredProteinM = totalTestN * pMW / 1e3
-    const recoveryYield = mControlProtein > 0 ? totalRecoveredProteinM / mControlProtein : 0
-
-    // Oligo removal yield: fraction of oligo removed
-    const oligoRemovalYield = nControlOligo > 0
-      ? 1 - (nTestOligo / nControlOligo)
-      : 0
-
-    // Product yield: moles of 1:1 conjugate / moles of pre-conjugation protein
-    const oneToOneConj = conjugates.find(c => c.oligoRatio === '1')
-    const nOneToOne = oneToOneConj ? calcComponent(oneToOneConj).n : 0
-    const productYield = nControlProtein > 0 ? nOneToOne / nControlProtein : 0
-
-    return { conjugationYield, recoveryYield, oligoRemovalYield, productYield, conjDetails, nControlProtein, mControlProtein }
+    return utilCalcYields(getAnalysisData())
   }
 
   function updateComponent(
@@ -487,15 +375,6 @@ export default function ThioLinkAnalysis() {
     })
   }
 
-  function getAnalysisData(): AnalysisData {
-    return {
-      correctionFactor, pathLength,
-      proteinName, proteinE280, proteinE260, proteinMW,
-      oligoName, oligoE280, oligoE260, oligoMW,
-      controlComponents, testComponents,
-    }
-  }
-
   function loadAnalysis(analysis: SavedAnalysis) {
     const d = analysis.data
     if (d.correctionFactor) setCorrectionFactor(d.correctionFactor)
@@ -527,6 +406,55 @@ export default function ThioLinkAnalysis() {
   async function deleteAnalysis(id: string) {
     if (!user) return
     await deleteDoc(doc(firestore, 'users', user.uid, 'thiolinkAnalyses', id))
+  }
+
+  async function openEmbedModal() {
+    if (!user) return
+    setShowEmbedModal(true)
+    setEmbedDone(null)
+    setEmbedLoading(true)
+    try {
+      const snap = await getDocs(
+        query(collection(firestore, 'users', user.uid, 'projects'), orderBy('updatedAt', 'desc'))
+      )
+      setEmbedProjects(snap.docs.map(d => ({ id: d.id, name: d.data().name || 'Untitled' })))
+    } finally {
+      setEmbedLoading(false)
+    }
+  }
+
+  async function embedToProject(projectId: string) {
+    if (!user) return
+    setEmbedSaving(true)
+    try {
+      const yields = calcYields()
+      const now = Timestamp.now()
+      await addDoc(collection(firestore, 'users', user.uid, 'projects', projectId, 'notes'), {
+        content: '',
+        type: 'thiolink',
+        thiolinkData: {
+          title: embedTitle.trim() || 'Conjugation Analysis',
+          analysisData: getAnalysisData(),
+          yields: {
+            conjugationYield: yields.conjugationYield,
+            recoveryYield: yields.recoveryYield,
+            oligoRemovalYield: yields.oligoRemovalYield,
+            productYield: yields.productYield,
+          },
+          capturedAt: now,
+        },
+        createdAt: now,
+        updatedAt: now,
+      })
+      const projectName = embedProjects.find(p => p.id === projectId)?.name || 'project'
+      setEmbedDone(projectName)
+      setTimeout(() => {
+        setShowEmbedModal(false)
+        setEmbedDone(null)
+      }, 1500)
+    } finally {
+      setEmbedSaving(false)
+    }
   }
 
   function resetAll() {
@@ -629,6 +557,14 @@ export default function ThioLinkAnalysis() {
           >
             <Download className="w-4 h-4" />
             CSV
+          </button>
+          <button
+            onClick={openEmbedModal}
+            disabled={!hasResults}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-40"
+            title="Embed snapshot in a project"
+          >
+            <FolderPlus className="w-4 h-4" />
           </button>
           <button
             onClick={() => setShowSaveModal(true)}
@@ -855,6 +791,59 @@ export default function ThioLinkAnalysis() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Embed-to-Project Modal */}
+      {showEmbedModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !embedSaving && setShowEmbedModal(false)}>
+          <div className="bg-white rounded-2xl p-5 w-full max-w-sm shadow-xl max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            {embedDone ? (
+              <div className="text-center py-4">
+                <div className="text-2xl mb-2">✓</div>
+                <p className="text-sm text-slate-600">Added to <span className="font-medium">{embedDone}</span></p>
+              </div>
+            ) : (
+              <>
+                <h3 className="text-lg font-bold text-slate-900 mb-1">Add to Project</h3>
+                <p className="text-xs text-slate-400 mb-3">Embeds a snapshot of the current results into a project.</p>
+                <label className="text-xs text-slate-500">Snapshot title</label>
+                <input
+                  type="text"
+                  value={embedTitle}
+                  onChange={e => setEmbedTitle(e.target.value)}
+                  placeholder="Conjugation Analysis"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm mb-3 mt-1 focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+                <div className="text-xs text-slate-500 mb-2">Pick a project</div>
+                {embedLoading ? (
+                  <p className="text-sm text-slate-400 text-center py-4">Loading projects...</p>
+                ) : embedProjects.length === 0 ? (
+                  <p className="text-sm text-slate-400 text-center py-4">No projects yet. Create one first.</p>
+                ) : (
+                  <div className="space-y-1 max-h-60 overflow-y-auto">
+                    {embedProjects.map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => embedToProject(p.id)}
+                        disabled={embedSaving}
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all disabled:opacity-40"
+                      >
+                        <div className="text-sm font-medium text-slate-800">{p.name}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={() => setShowEmbedModal(false)}
+                  disabled={embedSaving}
+                  className="w-full mt-3 py-2 text-sm text-slate-500 bg-slate-100 rounded-xl hover:bg-slate-200 disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
 

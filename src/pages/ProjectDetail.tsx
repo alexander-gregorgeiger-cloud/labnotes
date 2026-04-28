@@ -92,15 +92,25 @@ export default function ProjectDetail() {
     const unsubNotes = onSnapshot(notesQuery, (snap) => {
       const notesData: Note[] = snap.docs.map(d => {
         const data = d.data()
-        return {
+        const note: Note = {
           id: d.id,
           projectId: id,
-          content: data.content,
+          content: data.content || '',
           imageData: data.imageData || undefined,
           color: data.color || undefined,
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         }
+        if (data.type === 'thiolink' && data.thiolinkData) {
+          note.type = 'thiolink'
+          note.thiolinkData = {
+            title: data.thiolinkData.title || 'Conjugation Analysis',
+            analysisData: data.thiolinkData.analysisData,
+            yields: data.thiolinkData.yields,
+            capturedAt: data.thiolinkData.capturedAt?.toDate?.() || new Date(),
+          }
+        }
+        return note
       })
       setNotes(notesData)
     })
@@ -491,23 +501,29 @@ export default function ProjectDetail() {
                 </div>
               ) : (
                 <>
-                  {note.imageData && (
-                    <div
-                      className="w-full mb-3 rounded-lg overflow-hidden border border-slate-100 relative"
-                      role="button"
-                      tabIndex={0}
-                      onPointerUp={() => setLightboxImage(note.imageData!)}
-                    >
-                      <img
-                        src={note.imageData}
-                        alt="Note photo"
-                        className="w-full rounded-lg"
-                        draggable={false}
-                      />
-                      <div className="absolute bottom-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
-                        Tap to zoom
-                      </div>
-                    </div>
+                  {note.type === 'thiolink' && note.thiolinkData ? (
+                    <ThioLinkNoteCard data={note.thiolinkData} />
+                  ) : (
+                    <>
+                      {note.imageData && (
+                        <div
+                          className="w-full mb-3 rounded-lg overflow-hidden border border-slate-100 relative"
+                          role="button"
+                          tabIndex={0}
+                          onPointerUp={() => setLightboxImage(note.imageData!)}
+                        >
+                          <img
+                            src={note.imageData}
+                            alt="Note photo"
+                            className="w-full rounded-lg"
+                            draggable={false}
+                          />
+                          <div className="absolute bottom-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
+                            Tap to zoom
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                   {note.content && (
                     <p className="text-slate-800 whitespace-pre-wrap">{note.content}</p>
@@ -654,4 +670,85 @@ function formatTimestamp(date: Date): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function ThioLinkNoteCard({ data }: { data: NonNullable<Note['thiolinkData']> }) {
+  const [showInputs, setShowInputs] = useState(false)
+  const { title, yields, analysisData } = data
+  const tiles = [
+    { label: 'Conjugation', pct: yields.conjugationYield, bg: 'bg-blue-50', text: 'text-primary' },
+    { label: 'Recovery', pct: yields.recoveryYield, bg: 'bg-orange-50', text: 'text-accent' },
+    { label: 'Oligo Removal', pct: yields.oligoRemovalYield, bg: 'bg-emerald-50', text: 'text-emerald-600' },
+    { label: 'Product (1:1)', pct: yields.productYield, bg: 'bg-purple-50', text: 'text-purple-700' },
+  ]
+  return (
+    <div className="mb-3">
+      <div className="flex items-center gap-2 mb-2">
+        <FlaskConical className="w-4 h-4 text-primary" />
+        <span className="text-sm font-semibold text-slate-800">{title}</span>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {tiles.map(t => (
+          <div key={t.label} className={`text-center ${t.bg} rounded-xl p-2.5`}>
+            <div className="text-[10px] text-slate-500 mb-0.5">{t.label}</div>
+            <div className={`text-base font-bold ${t.text}`}>{(t.pct * 100).toFixed(1)}%</div>
+            <div className="text-[9px] text-slate-400">yield</div>
+          </div>
+        ))}
+      </div>
+      {analysisData && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setShowInputs(s => !s)}
+            className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            {showInputs ? 'Hide inputs' : 'View inputs'}
+          </button>
+          {showInputs && (
+            <div className="mt-1.5 bg-slate-50 rounded-lg p-2.5 text-[11px] text-slate-600 space-y-1.5">
+              <div>
+                <span className="text-slate-400">Protein</span>{' '}
+                <span className="font-medium">{analysisData.proteinName || '—'}</span>{' '}
+                <span className="text-slate-400">ε₂₈₀</span> {analysisData.proteinE280 || '—'}{' '}
+                <span className="text-slate-400">MW</span> {analysisData.proteinMW || '—'} Da
+              </div>
+              <div>
+                <span className="text-slate-400">Oligo</span>{' '}
+                <span className="font-medium">{analysisData.oligoName || '—'}</span>{' '}
+                <span className="text-slate-400">ε₂₈₀</span> {analysisData.oligoE280 || '—'}{' '}
+                <span className="text-slate-400">MW</span> {analysisData.oligoMW || '—'} Da
+              </div>
+              <ThioLinkComponentTable label="Control" components={analysisData.controlComponents || []} />
+              <ThioLinkComponentTable label="Test" components={analysisData.testComponents || []} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ThioLinkComponentTable({ label, components }: { label: string; components: NonNullable<Note['thiolinkData']>['analysisData']['controlComponents'] }) {
+  if (components.length === 0) return null
+  return (
+    <div>
+      <div className="text-slate-400 mb-0.5">{label}</div>
+      <div className="space-y-0.5">
+        {components.map(c => {
+          const mode = c.inputMode || 'av'
+          let inputDisplay: string
+          if (mode === 'cv') inputDisplay = `${c.conc || '—'} mg/mL · ${c.vol || '—'} µL`
+          else if (mode === 'mv') inputDisplay = `${c.molarConc || '—'} µM · ${c.vol || '—'} µL`
+          else inputDisplay = `A·V ${c.av || '—'}`
+          return (
+            <div key={c.id} className="flex justify-between gap-2">
+              <span className="truncate">{c.name}</span>
+              <span className="text-slate-500 flex-shrink-0">{inputDisplay}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }

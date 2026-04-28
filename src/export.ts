@@ -132,8 +132,33 @@ export async function exportProject(project: Project, notes: Note[]) {
       })
     )
 
-    // Photo
-    if (note.imageData) {
+    // ThioLink snapshot — render specially
+    if (note.type === 'thiolink' && note.thiolinkData) {
+      const t = note.thiolinkData
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: t.title, size: 24, bold: true, color: '312783' })],
+          spacing: { after: 60 },
+        })
+      )
+      const pct = (v: number) => `${(v * 100).toFixed(1)}%`
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: 'Conjugation: ', size: 20, color: '64748b' }),
+            new TextRun({ text: pct(t.yields.conjugationYield), size: 20, bold: true, color: '312783' }),
+            new TextRun({ text: '   |   Recovery: ', size: 20, color: '64748b' }),
+            new TextRun({ text: pct(t.yields.recoveryYield), size: 20, bold: true, color: 'F39200' }),
+            new TextRun({ text: '   |   Oligo Removal: ', size: 20, color: '64748b' }),
+            new TextRun({ text: pct(t.yields.oligoRemovalYield), size: 20, bold: true, color: '059669' }),
+            new TextRun({ text: '   |   Product (1:1): ', size: 20, color: '64748b' }),
+            new TextRun({ text: pct(t.yields.productYield), size: 20, bold: true, color: '7e22ce' }),
+          ],
+          spacing: { after: 100 },
+        })
+      )
+    } else if (note.imageData) {
+      // Photo
       const imageBytes = base64ToUint8Array(note.imageData)
       const dims = await getImageDimensions(note.imageData)
       const maxWidth = 500
@@ -155,7 +180,7 @@ export async function exportProject(project: Project, notes: Note[]) {
       )
     }
 
-    // Text content
+    // Text content (caption — applies to all note types)
     if (note.content) {
       children.push(
         new Paragraph({
