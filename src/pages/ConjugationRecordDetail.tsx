@@ -697,6 +697,7 @@ export default function ConjugationRecordDetail() {
         {/* ── Section 5: Post-Exchange Quantification ── */}
         <Section num={5} title="Post-Exchange Quantification" comment={r.sectionComments?.['s5']} onCommentChange={v => updateComment('s5', v)}>
           <div className="mt-3">
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">5.1 Measurements</h3>
             <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. 3 measurements per tube.</p>
             {tubeNums.map(i => {
               const t = r.tubes[i]
@@ -730,6 +731,49 @@ export default function ConjugationRecordDetail() {
                 </div>
               )
             })}
+
+            {/* 5.2 Linker & Oligo Volumes (per tube) — input mass derived from 5.1 */}
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">5.2 Linker & Oligo Volumes (per tube)</h3>
+            <p className="text-xs text-slate-500 mb-2">Volumes computed from measured post-exchange mass and current mixing ratio (Section 2.0).</p>
+            <div className="overflow-x-auto -mx-4 px-4">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-primary text-white">
+                    <th className="px-2 py-1.5 text-left rounded-tl-lg">Tube</th>
+                    <th className="px-2 py-1.5 text-left">Variant</th>
+                    <th className="px-2 py-1.5 text-right">Input Mass (mg)</th>
+                    <th className="px-2 py-1.5 text-right">Linker (nmol)</th>
+                    <th className="px-2 py-1.5 text-right">Linker (µL)</th>
+                    <th className="px-2 py-1.5 text-right">Oligo (nmol)</th>
+                    <th className="px-2 py-1.5 text-right rounded-tr-lg">Oligo (µL)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tubeNums.map(i => {
+                    const t = r.tubes[i]
+                    const variant = getVariant(t.adapterVariant, r)
+                    const medianConc = median3(t.postExM1, t.postExM2, t.postExM3)
+                    const vol = t.postExVolume ?? t.recoveredVolume
+                    const totalMass = calcTotalMassUg(medianConc, vol)
+                    const inputMassMg = totalMass !== null ? totalMass / 1000 : null
+                    const vols = variant && inputMassMg !== null
+                      ? calcVariantVolumes(variant.mwProtein, r.mixingRatioLinker ?? 2, r.mixingRatioOligo ?? 2.5, inputMassMg)
+                      : null
+                    return (
+                      <tr key={i} className="border-b border-slate-100">
+                        <td className="px-2 py-1.5 font-medium">{i + 1}</td>
+                        <td className="px-2 py-1.5">{t.adapterVariant || '—'}</td>
+                        <td className="px-2 py-1.5 text-right font-mono">{inputMassMg !== null ? inputMassMg.toFixed(3) : '—'}</td>
+                        <td className="px-2 py-1.5 text-right font-mono">{vols ? vols.linkerAmount.toFixed(2) : '—'}</td>
+                        <td className="px-2 py-1.5 text-right font-mono">{vols ? vols.linkerVolume.toFixed(1) : '—'}</td>
+                        <td className="px-2 py-1.5 text-right font-mono">{vols ? vols.oligoAmount.toFixed(2) : '—'}</td>
+                        <td className="px-2 py-1.5 text-right font-mono">{vols ? vols.oligoVolume.toFixed(0) : '—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </Section>
 

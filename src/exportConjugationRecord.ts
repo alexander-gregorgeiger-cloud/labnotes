@@ -309,6 +309,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
   addSectionHeader(5, 'POST-EXCHANGE QUANTIFICATION')
   addText('Method: NanoDrop, Protein A280, Blank with PBS-T.', { size: 8, color: GRAY })
   y += 2
+  addSubsection('5.1 Measurements')
   addTable(
     [['Tube', 'M1', 'M2', 'M3', 'Median (mg/mL)', 'Vol (µL)', 'Mass (µg)', 'Amount (nmol)', '≥ 900 µg?']],
     tubeNums.map(i => {
@@ -320,6 +321,26 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
       const amount = variant ? calcAmountNmol(mass, variant.mwProtein) : null
       const ok = mass !== null ? (mass >= 900 ? 'Yes' : 'No') : '—'
       return [String(i + 1), fmt(t.postExM1), fmt(t.postExM2), fmt(t.postExM3), fmt(med), fmt(vol, 0), fmt(mass, 1), fmt(amount, 2), ok]
+    })
+  )
+
+  addSubsection('5.2 Linker & Oligo Volumes (per tube)')
+  addText('Input mass derived from measured post-exchange mass. Ratio (Protein : Linker : Oligo) = 1 : ' + lr + ' : ' + or_, { size: 8, color: GRAY })
+  y += 2
+  addTable(
+    [['Tube', 'Variant', 'Input Mass (mg)', 'Linker (nmol)', 'Linker (µL)', 'Oligo (nmol)', 'Oligo (µL)']],
+    tubeNums.map(i => {
+      const t = r.tubes[i]
+      const variant = getVariant(t.adapterVariant, r)
+      const med = median3(t.postExM1, t.postExM2, t.postExM3)
+      const vol = t.postExVolume ?? t.recoveredVolume
+      const mass = calcTotalMassUg(med, vol)
+      const inputMg = mass !== null ? mass / 1000 : null
+      if (!variant || inputMg === null) {
+        return [String(i + 1), t.adapterVariant || '—', '—', '—', '—', '—', '—']
+      }
+      const vols = calcVariantVolumes(variant.mwProtein, lr, or_, inputMg)
+      return [String(i + 1), variant.name, fmt(inputMg, 3), fmt(vols.linkerAmount, 2), fmt(vols.linkerVolume, 1), fmt(vols.oligoAmount, 2), fmt(vols.oligoVolume, 0)]
     })
   )
 
