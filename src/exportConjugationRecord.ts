@@ -11,6 +11,7 @@ import {
   calcOligoConcentrationUm,
   getAllVariants,
   calcVariantVolumes,
+  getPostExMedianMgPerMl,
   type ConjugationRecord,
   type AdapterVariant,
 } from './conjugationRecord'
@@ -311,16 +312,18 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
   y += 2
   addSubsection('5.1 Measurements')
   addTable(
-    [['Tube', 'M1', 'M2', 'M3', 'Median (mg/mL)', 'Vol (µL)', 'Mass (µg)', 'Amount (nmol)', '≥ 900 µg?']],
+    [['Tube', 'Input', 'M1', 'M2', 'M3', 'Median (mg/mL)', 'Vol (µL)', 'Mass (µg)', 'Amount (nmol)', '≥ 900 µg?']],
     tubeNums.map(i => {
       const t = r.tubes[i]
       const variant = getVariant(t.adapterVariant, r)
-      const med = median3(t.postExM1, t.postExM2, t.postExM3)
+      const mode = t.postExInputMode ?? 'conc'
+      const modeLabel = mode === 'a280' ? 'A₂₈₀' : 'mg/mL'
+      const medConc = getPostExMedianMgPerMl(t, variant)
       const vol = t.postExVolume ?? t.recoveredVolume
-      const mass = calcTotalMassUg(med, vol)
+      const mass = calcTotalMassUg(medConc, vol)
       const amount = variant ? calcAmountNmol(mass, variant.mwProtein) : null
       const ok = mass !== null ? (mass >= 900 ? 'Yes' : 'No') : '—'
-      return [String(i + 1), fmt(t.postExM1), fmt(t.postExM2), fmt(t.postExM3), fmt(med), fmt(vol, 0), fmt(mass, 1), fmt(amount, 2), ok]
+      return [String(i + 1), modeLabel, fmt(t.postExM1), fmt(t.postExM2), fmt(t.postExM3), fmt(medConc), fmt(vol, 0), fmt(mass, 1), fmt(amount, 2), ok]
     })
   )
 
@@ -332,9 +335,9 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     tubeNums.map(i => {
       const t = r.tubes[i]
       const variant = getVariant(t.adapterVariant, r)
-      const med = median3(t.postExM1, t.postExM2, t.postExM3)
+      const medConc = getPostExMedianMgPerMl(t, variant)
       const vol = t.postExVolume ?? t.recoveredVolume
-      const mass = calcTotalMassUg(med, vol)
+      const mass = calcTotalMassUg(medConc, vol)
       const inputMg = mass !== null ? mass / 1000 : null
       if (!variant || inputMg === null) {
         return [String(i + 1), t.adapterVariant || '—', '—', '—', '—', '—', '—']
@@ -460,7 +463,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     tubeNums.map(i => {
       const t = r.tubes[i]
       const variant = getVariant(t.adapterVariant, r)
-      const postMed = median3(t.postExM1, t.postExM2, t.postExM3)
+      const postMed = getPostExMedianMgPerMl(t, variant)
       const postVol = t.postExVolume ?? t.recoveredVolume
       const postMass = calcTotalMassUg(postMed, postVol)
       const startAmt = variant ? calcAmountNmol(postMass, variant.mwProtein) : null

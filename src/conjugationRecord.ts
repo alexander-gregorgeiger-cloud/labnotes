@@ -94,6 +94,8 @@ export interface TubeData {
   recoveredVolume: number | null // µL
   recoveryVisualCheck: 'clear' | 'turbid' | ''
   // Section 5 - Post-Exchange Quantification (3x NanoDrop)
+  // Input mode: 'conc' → M1..M3 stored as mg/mL; 'a280' → stored as A₂₈₀ units
+  postExInputMode?: 'conc' | 'a280'
   postExM1: number | null
   postExM2: number | null
   postExM3: number | null
@@ -217,6 +219,7 @@ export function createDefaultTube(): TubeData {
     inputVolume: null,
     recoveredVolume: null,
     recoveryVisualCheck: '',
+    postExInputMode: 'conc',
     postExM1: null,
     postExM2: null,
     postExM3: null,
@@ -364,6 +367,42 @@ export function calcVariantVolumes(
   const oligoAmount   = proteinAmount * oligoRatio
   const oligoVolume   = oligoAmount * 10           // µL (100 µM stock)
   return { proteinAmount, linkerAmount, linkerVolume, oligoAmount, oligoVolume }
+}
+
+/**
+ * Convert A₂₈₀ absorbance (1 cm path) to concentration in mg/mL using
+ * Beer–Lambert: c (mol/L) = A / ε.  Then c (mg/mL) = c (M) × MW (g/mol),
+ * which equals A × MW_kDa × 1000 / ε for ε in M⁻¹·cm⁻¹.
+ */
+export function a280ToMgPerMl(
+  a280: number | null,
+  mwKda: number,
+  e280: number
+): number | null {
+  if (a280 === null || e280 === 0) return null
+  return (a280 * mwKda * 1000) / e280
+}
+
+/**
+ * Return the median post-exchange concentration in mg/mL, accounting for
+ * whether the tube's measurements were entered as concentration or A₂₈₀.
+ */
+export function getPostExMedianMgPerMl(
+  tube: {
+    postExInputMode?: 'conc' | 'a280'
+    postExM1: number | null
+    postExM2: number | null
+    postExM3: number | null
+  },
+  variant?: { mwProtein: number; e280Protein: number } | null
+): number | null {
+  const med = median3(tube.postExM1, tube.postExM2, tube.postExM3)
+  if (med === null) return null
+  if (tube.postExInputMode === 'a280') {
+    if (!variant) return null
+    return a280ToMgPerMl(med, variant.mwProtein, variant.e280Protein)
+  }
+  return med
 }
 
 /**

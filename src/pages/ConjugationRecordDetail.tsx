@@ -19,6 +19,7 @@ import {
   createDefaultTube,
   getAllVariants,
   calcVariantVolumes,
+  getPostExMedianMgPerMl,
   type ConjugationRecord,
   type TubeData,
   type CommonMaterial,
@@ -698,29 +699,49 @@ export default function ConjugationRecordDetail() {
         <Section num={5} title="Post-Exchange Quantification" comment={r.sectionComments?.['s5']} onCommentChange={v => updateComment('s5', v)}>
           <div className="mt-3">
             <h3 className="text-sm font-semibold text-slate-700 mb-2">5.1 Measurements</h3>
-            <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. 3 measurements per tube.</p>
+            <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. 3 measurements per tube. Switch input to A₂₈₀ when only absorbance is recorded — concentration is derived using the variant's ε and MW.</p>
             {tubeNums.map(i => {
               const t = r.tubes[i]
               const variant = getVariant(t.adapterVariant, r)
-              const medianConc = median3(t.postExM1, t.postExM2, t.postExM3)
+              const mode = t.postExInputMode ?? 'conc'
+              const isA280 = mode === 'a280'
+              const inputUnit = isA280 ? 'A₂₈₀' : 'mg/mL'
+              const inputLabelPrefix = isA280 ? 'A' : 'M'
+              const medianConc = getPostExMedianMgPerMl(t, variant)
               const vol = t.postExVolume ?? t.recoveredVolume
               const totalMass = calcTotalMassUg(medianConc, vol)
               const amount = variant ? calcAmountNmol(totalMass, variant.mwProtein) : null
               const massOk = totalMass !== null ? totalMass >= 900 : null
+              const needsVariantForA280 = isA280 && !variant
               return (
                 <div key={i} className="bg-slate-50 rounded-xl p-3 mb-2">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-bold text-sm">{i + 1}</span>
                     <span className="text-sm font-medium text-slate-700">{t.adapterVariant || `Tube ${i + 1}`}</span>
+                    <div className="ml-2 inline-flex rounded-md border border-slate-200 overflow-hidden text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => updateTube(i, 'postExInputMode', 'conc')}
+                        className={`px-2 py-0.5 ${!isA280 ? 'bg-primary text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
+                      >mg/mL</button>
+                      <button
+                        type="button"
+                        onClick={() => updateTube(i, 'postExInputMode', 'a280')}
+                        className={`px-2 py-0.5 ${isA280 ? 'bg-primary text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
+                      >A₂₈₀</button>
+                    </div>
                     {massOk !== null && (massOk
                       ? <span className="ml-auto text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">≥ 900 µg ✓</span>
                       : <span className="ml-auto text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">&lt; 900 µg ✗</span>
                     )}
                   </div>
+                  {needsVariantForA280 && (
+                    <p className="text-[10px] text-amber-600 mb-1">Select an adapter variant to convert A₂₈₀ → mg/mL.</p>
+                  )}
                   <div className="grid grid-cols-3 gap-2 mb-2">
-                    <NumInput label="M1" value={t.postExM1} onChange={v => updateTube(i, 'postExM1', v)} unit="mg/mL" />
-                    <NumInput label="M2" value={t.postExM2} onChange={v => updateTube(i, 'postExM2', v)} unit="mg/mL" />
-                    <NumInput label="M3" value={t.postExM3} onChange={v => updateTube(i, 'postExM3', v)} unit="mg/mL" />
+                    <NumInput label={`${inputLabelPrefix}1`} value={t.postExM1} onChange={v => updateTube(i, 'postExM1', v)} unit={inputUnit} />
+                    <NumInput label={`${inputLabelPrefix}2`} value={t.postExM2} onChange={v => updateTube(i, 'postExM2', v)} unit={inputUnit} />
+                    <NumInput label={`${inputLabelPrefix}3`} value={t.postExM3} onChange={v => updateTube(i, 'postExM3', v)} unit={inputUnit} />
                   </div>
                   <div className="grid grid-cols-4 gap-2">
                     <CalcField label="Median" value={medianConc} unit="mg/mL" />
@@ -752,7 +773,7 @@ export default function ConjugationRecordDetail() {
                   {tubeNums.map(i => {
                     const t = r.tubes[i]
                     const variant = getVariant(t.adapterVariant, r)
-                    const medianConc = median3(t.postExM1, t.postExM2, t.postExM3)
+                    const medianConc = getPostExMedianMgPerMl(t, variant)
                     const vol = t.postExVolume ?? t.recoveredVolume
                     const totalMass = calcTotalMassUg(medianConc, vol)
                     const inputMassMg = totalMass !== null ? totalMass / 1000 : null
@@ -969,7 +990,7 @@ export default function ConjugationRecordDetail() {
               const t = r.tubes[i]
               const variant = getVariant(t.adapterVariant, r)
               // Start amount from Section 5
-              const postMedian = median3(t.postExM1, t.postExM2, t.postExM3)
+              const postMedian = getPostExMedianMgPerMl(t, variant)
               const postVol = t.postExVolume ?? t.recoveredVolume
               const postMass = calcTotalMassUg(postMedian, postVol)
               const startAmount = variant ? calcAmountNmol(postMass, variant.mwProtein) : null
