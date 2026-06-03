@@ -10,7 +10,6 @@ import {
   CHECKLIST_ITEMS,
   DEFAULT_COMMON_MATERIALS,
   OLIGO_MW_KDA,
-  median3,
   calcTotalMassUg,
   calcAmountNmol,
   calcYieldPercent,
@@ -20,6 +19,7 @@ import {
   getAllVariants,
   calcVariantVolumes,
   getPostExMedianMgPerMl,
+  getFinalMedianMgPerMl,
   type ConjugationRecord,
   type TubeData,
   type CommonMaterial,
@@ -906,24 +906,44 @@ export default function ConjugationRecordDetail() {
         {/* ── Section 10: Final Quantification ── */}
         <Section num={10} title="Final Quantification" comment={r.sectionComments?.['s10']} onCommentChange={v => updateComment('s10', v)}>
           <div className="mt-3">
-            <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. Use ε₂₈₀ Adapter (not Protein).</p>
+            <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. Use ε₂₈₀ Adapter (not Protein). Switch input to A₂₈₀ when only absorbance is recorded — concentration is derived using the variant's ε_Adapter and MW_Adapter.</p>
             {tubeNums.map(i => {
               const t = r.tubes[i]
               const variant = getVariant(t.adapterVariant, r)
-              const medianConc = median3(t.finalM1, t.finalM2, t.finalM3)
+              const mode = t.finalInputMode ?? 'conc'
+              const isA280 = mode === 'a280'
+              const inputUnit = isA280 ? 'A₂₈₀' : 'mg/mL'
+              const inputLabelPrefix = isA280 ? 'A' : 'M'
+              const medianConc = getFinalMedianMgPerMl(t, variant)
               const vol = t.finalVolume ?? t.finalRecoveredVolume
               const totalMass = calcTotalMassUg(medianConc, vol)
               const amount = variant ? calcAmountNmol(totalMass, variant.mwAdapter) : null
+              const needsVariantForA280 = isA280 && !variant
               return (
                 <div key={i} className="bg-slate-50 rounded-xl p-3 mb-2">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-bold text-sm">{i + 1}</span>
                     <span className="text-sm font-medium text-slate-700">{t.adapterVariant || `Tube ${i + 1}`}</span>
+                    <div className="ml-2 inline-flex rounded-md border border-slate-200 overflow-hidden text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => updateTube(i, 'finalInputMode', 'conc')}
+                        className={`px-2 py-0.5 ${!isA280 ? 'bg-primary text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
+                      >mg/mL</button>
+                      <button
+                        type="button"
+                        onClick={() => updateTube(i, 'finalInputMode', 'a280')}
+                        className={`px-2 py-0.5 ${isA280 ? 'bg-primary text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
+                      >A₂₈₀</button>
+                    </div>
                   </div>
+                  {needsVariantForA280 && (
+                    <p className="text-[10px] text-amber-600 mb-1">Select an adapter variant to convert A₂₈₀ → mg/mL.</p>
+                  )}
                   <div className="grid grid-cols-3 gap-2 mb-2">
-                    <NumInput label="M1" value={t.finalM1} onChange={v => updateTube(i, 'finalM1', v)} unit="mg/mL" />
-                    <NumInput label="M2" value={t.finalM2} onChange={v => updateTube(i, 'finalM2', v)} unit="mg/mL" />
-                    <NumInput label="M3" value={t.finalM3} onChange={v => updateTube(i, 'finalM3', v)} unit="mg/mL" />
+                    <NumInput label={`${inputLabelPrefix}1`} value={t.finalM1} onChange={v => updateTube(i, 'finalM1', v)} unit={inputUnit} />
+                    <NumInput label={`${inputLabelPrefix}2`} value={t.finalM2} onChange={v => updateTube(i, 'finalM2', v)} unit={inputUnit} />
+                    <NumInput label={`${inputLabelPrefix}3`} value={t.finalM3} onChange={v => updateTube(i, 'finalM3', v)} unit={inputUnit} />
                   </div>
                   <div className="grid grid-cols-4 gap-2">
                     <CalcField label="Median" value={medianConc} unit="mg/mL" />
@@ -944,7 +964,7 @@ export default function ConjugationRecordDetail() {
             {tubeNums.map(i => {
               const t = r.tubes[i]
               const variant = getVariant(t.adapterVariant, r)
-              const medianConc = median3(t.finalM1, t.finalM2, t.finalM3)
+              const medianConc = getFinalMedianMgPerMl(t, variant)
               const vol = t.finalVolume ?? t.finalRecoveredVolume
               const totalMass = calcTotalMassUg(medianConc, vol)
               const amount = variant ? calcAmountNmol(totalMass, variant.mwAdapter) : null
@@ -995,7 +1015,7 @@ export default function ConjugationRecordDetail() {
               const postMass = calcTotalMassUg(postMedian, postVol)
               const startAmount = variant ? calcAmountNmol(postMass, variant.mwProtein) : null
               // Final amount from Section 10
-              const finalMedian = median3(t.finalM1, t.finalM2, t.finalM3)
+              const finalMedian = getFinalMedianMgPerMl(t, variant)
               const finalVol = t.finalVolume ?? t.finalRecoveredVolume
               const finalMass = calcTotalMassUg(finalMedian, finalVol)
               const finalAmount = variant ? calcAmountNmol(finalMass, variant.mwAdapter) : null

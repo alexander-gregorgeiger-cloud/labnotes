@@ -110,6 +110,8 @@ export interface TubeData {
   finalRecoveredVolume: number | null // µL
   finalVisualCheck: 'clear' | 'turbid' | ''
   // Section 10 - Final Quantification (3x NanoDrop)
+  // Input mode: 'conc' → M1..M3 stored as mg/mL; 'a280' → stored as A₂₈₀ units (uses ε/MW of the Adapter conjugate)
+  finalInputMode?: 'conc' | 'a280'
   finalM1: number | null
   finalM2: number | null
   finalM3: number | null
@@ -231,6 +233,7 @@ export function createDefaultTube(): TubeData {
     aktaCollectedVolume: null,
     finalRecoveredVolume: null,
     finalVisualCheck: '',
+    finalInputMode: 'conc',
     finalM1: null,
     finalM2: null,
     finalM3: null,
@@ -401,6 +404,31 @@ export function getPostExMedianMgPerMl(
   if (tube.postExInputMode === 'a280') {
     if (!variant) return null
     return a280ToMgPerMl(med, variant.mwProtein, variant.e280Protein)
+  }
+  return med
+}
+
+/**
+ * Return the median final-quantification concentration in mg/mL,
+ * accounting for whether the tube's measurements were entered as
+ * concentration or as A₂₈₀. Conversion uses the conjugate (adapter)
+ * extinction coefficient and MW, since after AKTA the species in the
+ * tube is the protein–oligo conjugate.
+ */
+export function getFinalMedianMgPerMl(
+  tube: {
+    finalInputMode?: 'conc' | 'a280'
+    finalM1: number | null
+    finalM2: number | null
+    finalM3: number | null
+  },
+  variant?: { mwAdapter: number; e280Adapter: number } | null
+): number | null {
+  const med = median3(tube.finalM1, tube.finalM2, tube.finalM3)
+  if (med === null) return null
+  if (tube.finalInputMode === 'a280') {
+    if (!variant) return null
+    return a280ToMgPerMl(med, variant.mwAdapter, variant.e280Adapter)
   }
   return med
 }

@@ -3,7 +3,6 @@ import autoTable from 'jspdf-autotable'
 import {
   CHECKLIST_ITEMS,
   OLIGO_MW_KDA,
-  median3,
   calcTotalMassUg,
   calcAmountNmol,
   calcYieldPercent,
@@ -12,6 +11,7 @@ import {
   getAllVariants,
   calcVariantVolumes,
   getPostExMedianMgPerMl,
+  getFinalMedianMgPerMl,
   type ConjugationRecord,
   type AdapterVariant,
 } from './conjugationRecord'
@@ -411,15 +411,17 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
   addText('Method: NanoDrop, Protein A280, Blank with PBS-T. Use ε₂₈₀ Adapter (not Protein).', { size: 8, color: GRAY })
   y += 2
   addTable(
-    [['Tube', 'M1', 'M2', 'M3', 'Median (mg/mL)', 'Vol (µL)', 'Mass (µg)', 'MW Adapt (kDa)', 'Amount (nmol)']],
+    [['Tube', 'Input', 'M1', 'M2', 'M3', 'Median (mg/mL)', 'Vol (µL)', 'Mass (µg)', 'MW Adapt (kDa)', 'Amount (nmol)']],
     tubeNums.map(i => {
       const t = r.tubes[i]
       const variant = getVariant(t.adapterVariant, r)
-      const med = median3(t.finalM1, t.finalM2, t.finalM3)
+      const mode = t.finalInputMode ?? 'conc'
+      const modeLabel = mode === 'a280' ? 'A₂₈₀' : 'mg/mL'
+      const medConc = getFinalMedianMgPerMl(t, variant)
       const vol = t.finalVolume ?? t.finalRecoveredVolume
-      const mass = calcTotalMassUg(med, vol)
+      const mass = calcTotalMassUg(medConc, vol)
       const amount = variant ? calcAmountNmol(mass, variant.mwAdapter) : null
-      return [String(i + 1), fmt(t.finalM1), fmt(t.finalM2), fmt(t.finalM3), fmt(med), fmt(vol, 0), fmt(mass, 1), variant ? String(variant.mwAdapter) : '—', fmt(amount, 2)]
+      return [String(i + 1), modeLabel, fmt(t.finalM1), fmt(t.finalM2), fmt(t.finalM3), fmt(medConc), fmt(vol, 0), fmt(mass, 1), variant ? String(variant.mwAdapter) : '—', fmt(amount, 2)]
     })
   )
 
@@ -431,7 +433,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     tubeNums.map(i => {
       const t = r.tubes[i]
       const variant = getVariant(t.adapterVariant, r)
-      const med = median3(t.finalM1, t.finalM2, t.finalM3)
+      const med = getFinalMedianMgPerMl(t, variant)
       const vol = t.finalVolume ?? t.finalRecoveredVolume
       const mass = calcTotalMassUg(med, vol)
       const amount = variant ? calcAmountNmol(mass, variant.mwAdapter) : null
@@ -467,7 +469,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
       const postVol = t.postExVolume ?? t.recoveredVolume
       const postMass = calcTotalMassUg(postMed, postVol)
       const startAmt = variant ? calcAmountNmol(postMass, variant.mwProtein) : null
-      const finalMed = median3(t.finalM1, t.finalM2, t.finalM3)
+      const finalMed = getFinalMedianMgPerMl(t, variant)
       const finalVol = t.finalVolume ?? t.finalRecoveredVolume
       const finalMass = calcTotalMassUg(finalMed, finalVol)
       const finalAmt = variant ? calcAmountNmol(finalMass, variant.mwAdapter) : null
