@@ -918,6 +918,7 @@ export default function ConjugationRecordDetail() {
               const vol = t.finalVolume ?? t.finalRecoveredVolume
               const totalMass = calcTotalMassUg(medianConc, vol)
               const amount = variant ? calcAmountNmol(totalMass, variant.mwAdapter) : null
+              const concUm = amount !== null && vol !== null && vol > 0 ? (amount / vol) * 1000 : null
               const needsVariantForA280 = isA280 && !variant
               return (
                 <div key={i} className="bg-slate-50 rounded-xl p-3 mb-2">
@@ -945,11 +946,12 @@ export default function ConjugationRecordDetail() {
                     <NumInput label={`${inputLabelPrefix}2`} value={t.finalM2} onChange={v => updateTube(i, 'finalM2', v)} unit={inputUnit} />
                     <NumInput label={`${inputLabelPrefix}3`} value={t.finalM3} onChange={v => updateTube(i, 'finalM3', v)} unit={inputUnit} />
                   </div>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-5 gap-2">
                     <CalcField label="Median" value={medianConc} unit="mg/mL" />
                     <NumInput label="Volume" value={t.finalVolume} onChange={v => updateTube(i, 'finalVolume', v)} unit="µL" />
                     <CalcField label="Mass" value={totalMass} unit="µg" />
                     <CalcField label="Amount" value={amount} unit="nmol" />
+                    <CalcField label="Conc" value={concUm} unit="µM" />
                   </div>
                 </div>
               )
@@ -968,12 +970,14 @@ export default function ConjugationRecordDetail() {
               const vol = t.finalVolume ?? t.finalRecoveredVolume
               const totalMass = calcTotalMassUg(medianConc, vol)
               const amount = variant ? calcAmountNmol(totalMass, variant.mwAdapter) : null
+              const concUm = amount !== null && vol !== null && vol > 0 ? (amount / vol) * 1000 : null
               const { targetVolumeUl } = calcDilutionVolume(amount, 2.6)
               const bufferToAdd = targetVolumeUl !== null && vol !== null ? targetVolumeUl - vol : null
               return (
                 <div key={i} className="flex items-center gap-2 mb-2">
                   <span className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-bold text-sm shrink-0">{i + 1}</span>
                   <CalcField label="Amount" value={amount} unit="nmol" />
+                  <CalcField label="Conc" value={concUm} unit="µM" />
                   <CalcField label="Target Vol" value={targetVolumeUl} unit="µL" />
                   <CalcField label="Buffer to Add" value={bufferToAdd !== null && bufferToAdd > 0 ? bufferToAdd : bufferToAdd !== null ? 0 : null} unit="µL" />
                 </div>

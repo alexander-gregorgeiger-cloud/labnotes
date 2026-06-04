@@ -411,7 +411,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
   addText('Method: NanoDrop, Protein A280, Blank with PBS-T. Use ε₂₈₀ Adapter (not Protein).', { size: 8, color: GRAY })
   y += 2
   addTable(
-    [['Tube', 'Input', 'M1', 'M2', 'M3', 'Median (mg/mL)', 'Vol (µL)', 'Mass (µg)', 'MW Adapt (kDa)', 'Amount (nmol)']],
+    [['Tube', 'Input', 'M1', 'M2', 'M3', 'Median (mg/mL)', 'Vol (µL)', 'Mass (µg)', 'MW Adapt (kDa)', 'Amount (nmol)', 'Conc (µM)']],
     tubeNums.map(i => {
       const t = r.tubes[i]
       const variant = getVariant(t.adapterVariant, r)
@@ -421,7 +421,8 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
       const vol = t.finalVolume ?? t.finalRecoveredVolume
       const mass = calcTotalMassUg(medConc, vol)
       const amount = variant ? calcAmountNmol(mass, variant.mwAdapter) : null
-      return [String(i + 1), modeLabel, fmt(t.finalM1), fmt(t.finalM2), fmt(t.finalM3), fmt(medConc), fmt(vol, 0), fmt(mass, 1), variant ? String(variant.mwAdapter) : '—', fmt(amount, 2)]
+      const concUm = amount !== null && vol !== null && vol > 0 ? (amount / vol) * 1000 : null
+      return [String(i + 1), modeLabel, fmt(t.finalM1), fmt(t.finalM2), fmt(t.finalM3), fmt(medConc), fmt(vol, 0), fmt(mass, 1), variant ? String(variant.mwAdapter) : '—', fmt(amount, 2), fmt(concUm, 2)]
     })
   )
 
@@ -429,7 +430,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
   addSectionHeader(11, 'ALIQUOTING & STORAGE')
   addSubsection('11.1 Dilution to Target Concentration (2.6 µM)')
   addTable(
-    [['Tube', 'Amount (nmol)', 'Target Volume (µL)', 'Current Volume (µL)', 'Buffer to Add (µL)']],
+    [['Tube', 'Amount (nmol)', 'Conc (µM)', 'Target Volume (µL)', 'Current Volume (µL)', 'Buffer to Add (µL)']],
     tubeNums.map(i => {
       const t = r.tubes[i]
       const variant = getVariant(t.adapterVariant, r)
@@ -437,9 +438,10 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
       const vol = t.finalVolume ?? t.finalRecoveredVolume
       const mass = calcTotalMassUg(med, vol)
       const amount = variant ? calcAmountNmol(mass, variant.mwAdapter) : null
+      const concUm = amount !== null && vol !== null && vol > 0 ? (amount / vol) * 1000 : null
       const { targetVolumeUl } = calcDilutionVolume(amount, 2.6)
       const bufferToAdd = targetVolumeUl !== null && vol !== null ? Math.max(0, targetVolumeUl - vol) : null
-      return [String(i + 1), fmt(amount, 2), fmt(targetVolumeUl, 1), fmt(vol, 0), fmt(bufferToAdd, 1)]
+      return [String(i + 1), fmt(amount, 2), fmt(concUm, 2), fmt(targetVolumeUl, 1), fmt(vol, 0), fmt(bufferToAdd, 1)]
     })
   )
 
