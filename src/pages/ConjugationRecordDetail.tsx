@@ -711,6 +711,7 @@ export default function ConjugationRecordDetail() {
               const vol = t.postExVolume ?? t.recoveredVolume
               const totalMass = calcTotalMassUg(medianConc, vol)
               const amount = variant ? calcAmountNmol(totalMass, variant.mwProtein) : null
+              const concUm = amount !== null && vol !== null && vol > 0 ? (amount / vol) * 1000 : null
               const massOk = totalMass !== null ? totalMass >= 900 : null
               const needsVariantForA280 = isA280 && !variant
               return (
@@ -743,11 +744,12 @@ export default function ConjugationRecordDetail() {
                     <NumInput label={`${inputLabelPrefix}2`} value={t.postExM2} onChange={v => updateTube(i, 'postExM2', v)} unit={inputUnit} />
                     <NumInput label={`${inputLabelPrefix}3`} value={t.postExM3} onChange={v => updateTube(i, 'postExM3', v)} unit={inputUnit} />
                   </div>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-5 gap-2">
                     <CalcField label="Median" value={medianConc} unit="mg/mL" />
                     <NumInput label="Volume" value={t.postExVolume} onChange={v => updateTube(i, 'postExVolume', v)} unit="µL" />
                     <CalcField label="Mass" value={totalMass} unit="µg" />
                     <CalcField label="Amount" value={amount} unit="nmol" />
+                    <CalcField label="Conc" value={concUm} unit="µM" />
                   </div>
                 </div>
               )

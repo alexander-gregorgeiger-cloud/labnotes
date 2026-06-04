@@ -312,7 +312,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
   y += 2
   addSubsection('5.1 Measurements')
   addTable(
-    [['Tube', 'Input', 'M1', 'M2', 'M3', 'Median (mg/mL)', 'Vol (µL)', 'Mass (µg)', 'Amount (nmol)', '≥ 900 µg?']],
+    [['Tube', 'Input', 'M1', 'M2', 'M3', 'Median (mg/mL)', 'Vol (µL)', 'Mass (µg)', 'Amount (nmol)', 'Conc (µM)', '≥ 900 µg?']],
     tubeNums.map(i => {
       const t = r.tubes[i]
       const variant = getVariant(t.adapterVariant, r)
@@ -322,8 +322,9 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
       const vol = t.postExVolume ?? t.recoveredVolume
       const mass = calcTotalMassUg(medConc, vol)
       const amount = variant ? calcAmountNmol(mass, variant.mwProtein) : null
+      const concUm = amount !== null && vol !== null && vol > 0 ? (amount / vol) * 1000 : null
       const ok = mass !== null ? (mass >= 900 ? 'Yes' : 'No') : '—'
-      return [String(i + 1), modeLabel, fmt(t.postExM1), fmt(t.postExM2), fmt(t.postExM3), fmt(medConc), fmt(vol, 0), fmt(mass, 1), fmt(amount, 2), ok]
+      return [String(i + 1), modeLabel, fmt(t.postExM1), fmt(t.postExM2), fmt(t.postExM3), fmt(medConc), fmt(vol, 0), fmt(mass, 1), fmt(amount, 2), fmt(concUm, 2), ok]
     })
   )
 
