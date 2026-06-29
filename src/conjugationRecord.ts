@@ -58,8 +58,8 @@ export const ADAPTER_VARIANTS: AdapterVariant[] = [
     name: 'Strep-Tactin XT',
     mwProtein: 53.4,
     mwAdapter: 60.2,
-    e280Protein: 38000,
-    e280Adapter: 171333,
+    e280Protein: 152000,
+    e280Adapter: 272000,
     proteinAmount: 18.7,
     linkerAmount: 37.4,
     linkerVolume: 37.4,
@@ -94,11 +94,13 @@ export interface TubeData {
   recoveredVolume: number | null // µL
   recoveryVisualCheck: 'clear' | 'turbid' | ''
   // Section 5 - Post-Exchange Quantification (3x NanoDrop)
-  // Input mode: 'conc' → M1..M3 stored as mg/mL; 'a280' → stored as A₂₈₀ units
-  postExInputMode?: 'conc' | 'a280'
+  // Input mode: 'conc' → M1..M3 stored as mg/mL; 'a280' → stored as A₂₈₀ units;
+  // 'manual' → operator-entered concentration in postExManualConc (mg/mL), M1..M3 ignored.
+  postExInputMode?: 'conc' | 'a280' | 'manual'
   postExM1: number | null
   postExM2: number | null
   postExM3: number | null
+  postExManualConc?: number | null  // mg/mL — used only when postExInputMode === 'manual'
   postExVolume: number | null   // µL (same as recoveredVolume usually)
   // Section 8 - AKTA Purification
   aktaTopUp: boolean
@@ -225,6 +227,7 @@ export function createDefaultTube(): TubeData {
     postExM1: null,
     postExM2: null,
     postExM3: null,
+    postExManualConc: null,
     postExVolume: null,
     aktaTopUp: false,
     aktaRunTime: '',
@@ -392,13 +395,17 @@ export function a280ToMgPerMl(
  */
 export function getPostExMedianMgPerMl(
   tube: {
-    postExInputMode?: 'conc' | 'a280'
+    postExInputMode?: 'conc' | 'a280' | 'manual'
     postExM1: number | null
     postExM2: number | null
     postExM3: number | null
+    postExManualConc?: number | null
   },
   variant?: { mwProtein: number; e280Protein: number } | null
 ): number | null {
+  if (tube.postExInputMode === 'manual') {
+    return tube.postExManualConc ?? null
+  }
   const med = median3(tube.postExM1, tube.postExM2, tube.postExM3)
   if (med === null) return null
   if (tube.postExInputMode === 'a280') {

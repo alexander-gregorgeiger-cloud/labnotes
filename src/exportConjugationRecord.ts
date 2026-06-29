@@ -317,14 +317,17 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
       const t = r.tubes[i]
       const variant = getVariant(t.adapterVariant, r)
       const mode = t.postExInputMode ?? 'conc'
-      const modeLabel = mode === 'a280' ? 'A₂₈₀' : 'mg/mL'
+      const modeLabel = mode === 'a280' ? 'A₂₈₀' : mode === 'manual' ? 'Manual' : 'mg/mL'
       const medConc = getPostExMedianMgPerMl(t, variant)
       const vol = t.postExVolume ?? t.recoveredVolume
       const mass = calcTotalMassUg(medConc, vol)
       const amount = variant ? calcAmountNmol(mass, variant.mwProtein) : null
       const concUm = amount !== null && vol !== null && vol > 0 ? (amount / vol) * 1000 : null
       const ok = mass !== null ? (mass >= 900 ? 'Yes' : 'No') : '—'
-      return [String(i + 1), modeLabel, fmt(t.postExM1), fmt(t.postExM2), fmt(t.postExM3), fmt(medConc), fmt(vol, 0), fmt(mass, 1), fmt(amount, 2), fmt(concUm, 2), ok]
+      const m1 = mode === 'manual' ? '—' : fmt(t.postExM1)
+      const m2 = mode === 'manual' ? '—' : fmt(t.postExM2)
+      const m3 = mode === 'manual' ? '—' : fmt(t.postExM3)
+      return [String(i + 1), modeLabel, m1, m2, m3, fmt(medConc), fmt(vol, 0), fmt(mass, 1), fmt(amount, 2), fmt(concUm, 2), ok]
     })
   )
 
