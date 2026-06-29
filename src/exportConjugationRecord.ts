@@ -316,8 +316,8 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     tubeNums.map(i => {
       const t = r.tubes[i]
       const variant = getVariant(t.adapterVariant, r)
-      const mode = t.postExInputMode ?? 'conc'
-      const modeLabel = mode === 'a280' ? 'A₂₈₀' : mode === 'manual' ? 'Manual' : 'mg/mL'
+      const mode = t.postExInputMode ?? 'a280'
+      const modeLabel = mode === 'a280' ? 'A₂₈₀' : mode === 'manual' ? 'Manual (µM)' : 'mg/mL'
       const medConc = getPostExMedianMgPerMl(t, variant)
       const vol = t.postExVolume ?? t.recoveredVolume
       const mass = calcTotalMassUg(medConc, vol)

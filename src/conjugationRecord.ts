@@ -94,13 +94,14 @@ export interface TubeData {
   recoveredVolume: number | null // µL
   recoveryVisualCheck: 'clear' | 'turbid' | ''
   // Section 5 - Post-Exchange Quantification (3x NanoDrop)
-  // Input mode: 'conc' → M1..M3 stored as mg/mL; 'a280' → stored as A₂₈₀ units;
-  // 'manual' → operator-entered concentration in postExManualConc (mg/mL), M1..M3 ignored.
+  // Input mode: 'a280' → M1..M3 stored as A₂₈₀ units;
+  // 'manual' → operator-entered concentration in postExManualConc (µM), M1..M3 ignored.
+  // 'conc' is a legacy mode (mg/mL inputs in M1..M3) kept for backward-compat with existing records.
   postExInputMode?: 'conc' | 'a280' | 'manual'
   postExM1: number | null
   postExM2: number | null
   postExM3: number | null
-  postExManualConc?: number | null  // mg/mL — used only when postExInputMode === 'manual'
+  postExManualConc?: number | null  // µM — used only when postExInputMode === 'manual'
   postExVolume: number | null   // µL (same as recoveredVolume usually)
   // Section 8 - AKTA Purification
   aktaTopUp: boolean
@@ -223,7 +224,7 @@ export function createDefaultTube(): TubeData {
     inputVolume: null,
     recoveredVolume: null,
     recoveryVisualCheck: '',
-    postExInputMode: 'conc',
+    postExInputMode: 'a280',
     postExM1: null,
     postExM2: null,
     postExM3: null,
@@ -404,7 +405,11 @@ export function getPostExMedianMgPerMl(
   variant?: { mwProtein: number; e280Protein: number } | null
 ): number | null {
   if (tube.postExInputMode === 'manual') {
-    return tube.postExManualConc ?? null
+    if (tube.postExManualConc == null) return null
+    if (!variant) return null
+    // Manual entry is in µM → convert to mg/mL via protein MW (kDa).
+    // c[mg/mL] = c[µM] × MW[kDa] / 1000
+    return (tube.postExManualConc * variant.mwProtein) / 1000
   }
   const med = median3(tube.postExM1, tube.postExM2, tube.postExM3)
   if (med === null) return null

@@ -699,7 +699,7 @@ export default function ConjugationRecordDetail() {
         <Section num={5} title="Post-Exchange Quantification" comment={r.sectionComments?.['s5']} onCommentChange={v => updateComment('s5', v)}>
           <div className="mt-3">
             <h3 className="text-sm font-semibold text-slate-700 mb-2">5.1 Measurements</h3>
-            <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. 3 measurements per tube. Switch input to <b>A₂₈₀</b> when only absorbance is recorded — concentration is derived using the variant's ε and MW. Switch to <b>Manual</b> when the concentration is already known.</p>
+            <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. Enter <b>A₂₈₀</b> (3 readings, concentration derived via variant ε and MW) or switch to <b>Manual</b> to enter the concentration directly in µM.</p>
             {tubeNums.map(i => {
               const t = r.tubes[i]
               const variant = getVariant(t.adapterVariant, r)
@@ -715,6 +715,7 @@ export default function ConjugationRecordDetail() {
               const concUm = amount !== null && vol !== null && vol > 0 ? (amount / vol) * 1000 : null
               const massOk = totalMass !== null ? totalMass >= 900 : null
               const needsVariantForA280 = isA280 && !variant
+              const needsVariantForManual = isManual && !variant
               const medianLabel = isManual ? 'Conc' : 'Median'
               return (
                 <div key={i} className="bg-slate-50 rounded-xl p-3 mb-2">
@@ -724,19 +725,14 @@ export default function ConjugationRecordDetail() {
                     <div className="ml-2 inline-flex rounded-md border border-slate-200 overflow-hidden text-[10px]">
                       <button
                         type="button"
-                        onClick={() => updateTube(i, 'postExInputMode', 'conc')}
-                        className={`px-2 py-0.5 ${mode === 'conc' ? 'bg-primary text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
-                      >mg/mL</button>
-                      <button
-                        type="button"
                         onClick={() => updateTube(i, 'postExInputMode', 'a280')}
-                        className={`px-2 py-0.5 border-l border-slate-200 ${isA280 ? 'bg-primary text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
+                        className={`px-2 py-0.5 ${isA280 ? 'bg-primary text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
                       >A₂₈₀</button>
                       <button
                         type="button"
                         onClick={() => updateTube(i, 'postExInputMode', 'manual')}
                         className={`px-2 py-0.5 border-l border-slate-200 ${isManual ? 'bg-primary text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
-                        title="Already determined — enter concentration directly"
+                        title="Already determined — enter concentration directly in µM"
                       >Manual</button>
                     </div>
                     {massOk !== null && (massOk
@@ -747,9 +743,12 @@ export default function ConjugationRecordDetail() {
                   {needsVariantForA280 && (
                     <p className="text-[10px] text-amber-600 mb-1">Select an adapter variant to convert A₂₈₀ → mg/mL.</p>
                   )}
+                  {needsVariantForManual && (
+                    <p className="text-[10px] text-amber-600 mb-1">Select an adapter variant to derive mass from µM.</p>
+                  )}
                   {isManual ? (
                     <div className="grid grid-cols-3 gap-2 mb-2">
-                      <NumInput label="Conc" value={t.postExManualConc ?? null} onChange={v => updateTube(i, 'postExManualConc', v)} unit="mg/mL" />
+                      <NumInput label="Conc" value={t.postExManualConc ?? null} onChange={v => updateTube(i, 'postExManualConc', v)} unit="µM" />
                     </div>
                   ) : (
                     <div className="grid grid-cols-3 gap-2 mb-2">
