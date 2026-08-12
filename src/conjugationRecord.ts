@@ -138,6 +138,10 @@ export interface TubeData {
   qcActivityRatio: number | null
   qcKoff: number | null
   qcStatus: 'pass' | 'fail' | ''
+  // Identity verification by binding assay on the MatchMaker (Focal Molography)
+  identityVerified: boolean
+  identityLigand: string   // binding partner injected, e.g. Cetuximab, TNFα
+  identityNotes: string
   // Section 12 - Final Disposition
   coaReference: string
   disposition: 'release' | 'reject' | 'quarantine' | ''
@@ -159,6 +163,12 @@ export const ATTACHMENT_LABELS: Record<AttachmentKind, string> = {
   akta: 'ÄKTA Chromatogram',
   fm: 'FM Sensogram',
 }
+
+/**
+ * Binding partners routinely injected on the MatchMaker to confirm the identity
+ * of a conjugated receptor. Offered as quick-picks in Section 10.3.
+ */
+export const IDENTITY_LIGAND_SUGGESTIONS = ['Cetuximab', 'TNFα', 'TGF-β1']
 
 export interface ConjugationRecord {
   id: string
@@ -253,6 +263,9 @@ export function createDefaultTube(): TubeData {
     qcActivityRatio: null,
     qcKoff: null,
     qcStatus: '',
+    identityVerified: false,
+    identityLigand: '',
+    identityNotes: '',
     coaReference: '',
     disposition: '',
   }

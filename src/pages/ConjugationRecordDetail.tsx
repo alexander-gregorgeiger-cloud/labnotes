@@ -24,6 +24,7 @@ import {
   getPostExMedianMgPerMl,
   getFinalMedianMgPerMl,
   migrateSectionComments,
+  IDENTITY_LIGAND_SUGGESTIONS,
   type ConjugationRecord,
   type TubeData,
   type AdapterVariant,
@@ -1195,6 +1196,42 @@ export default function ConjugationRecordDetail() {
                     <NumInput label="Immob. Ratio" value={t.qcImmobRatio} onChange={v => updateTube(i, 'qcImmobRatio', v)} />
                     <NumInput label="Activity Ratio" value={t.qcActivityRatio} onChange={v => updateTube(i, 'qcActivityRatio', v)} />
                     <NumInput label="k_off (s⁻¹)" value={t.qcKoff} onChange={v => updateTube(i, 'qcKoff', v)} />
+                  </div>
+                  <div className="mt-3 bg-white border border-slate-200 rounded-lg p-2.5">
+                    <CheckItem
+                      label="Identity verified by binding assay (MatchMaker, Focal Molography)"
+                      checked={t.identityVerified || false}
+                      onChange={v => updateTube(i, 'identityVerified', v)}
+                    />
+                    <div className="flex flex-wrap gap-1 mt-2 mb-2">
+                      {IDENTITY_LIGAND_SUGGESTIONS.map(l => (
+                        <button
+                          key={l}
+                          type="button"
+                          onClick={() => updateTube(i, 'identityLigand', t.identityLigand === l ? '' : l)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                            t.identityLigand === l
+                              ? 'bg-primary text-white shadow-sm'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                    <TextInput
+                      label="Binding Partner"
+                      value={t.identityLigand || ''}
+                      onChange={v => updateTube(i, 'identityLigand', v)}
+                      placeholder="Analyte injected, e.g. Cetuximab"
+                    />
+                    <textarea
+                      value={t.identityNotes || ''}
+                      onChange={e => updateTube(i, 'identityNotes', e.target.value)}
+                      placeholder="Identity verification notes (immobilisation sequence, injected concentrations, outcome…)"
+                      rows={2}
+                      className="w-full mt-2 px-2 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light focus:border-transparent"
+                    />
                   </div>
                   <TubePhotos
                     kind="fm"
