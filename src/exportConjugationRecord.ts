@@ -521,19 +521,6 @@ export function exportConjugationRecordPDF(r: ConjugationRecord, attachments: Re
       return [String(i + 1), t.adapterVariant || '—', fmt(t.qcImmobRatio, 3), fmt(t.qcActivityRatio, 3), fmt(t.qcKoff, 6), t.qcStatus ? t.qcStatus.toUpperCase() : '—']
     })
   )
-
-  addSubsection('10.4 Identity Verification (Binding Assay, MatchMaker)')
-  addTable(
-    [['Tube', 'Adapter', 'Binding Partner', 'Verified']],
-    tubeNums.map(i => {
-      const t = r.tubes[i]
-      return [String(i + 1), t.adapterVariant || '—', t.identityLigand || '—', t.identityVerified ? 'Yes' : 'No']
-    })
-  )
-  for (const i of tubeNums) {
-    const t = r.tubes[i]
-    if (t.identityNotes) addField(`Tube ${i + 1} notes`, t.identityNotes)
-  }
   addPhotos('fm')
 
   // ── Section 11 ──
