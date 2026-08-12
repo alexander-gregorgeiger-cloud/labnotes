@@ -5,7 +5,8 @@ import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
 import { Plus, ClipboardList, Trash2, FolderOpen, ArrowLeft } from 'lucide-react'
 import type { ConjugationRecordMeta } from '../db'
-import { ADAPTER_VARIANTS, createDefaultTube, DEFAULT_COMMON_MATERIALS, CHECKLIST_ITEMS } from '../conjugationRecord'
+import { ADAPTER_VARIANTS, createDefaultTube, CHECKLIST_ITEMS, CURRENT_SCHEMA_VERSION } from '../conjugationRecord'
+import { deleteAllAttachments } from '../recordAttachments'
 
 export default function ConjugationRecordList() {
   const [showForm, setShowForm] = useState(false)
@@ -59,7 +60,6 @@ export default function ConjugationRecordList() {
       for (const v of ADAPTER_VARIANTS) {
         acceptanceCriteria[v.name] = { minYield: null, activity: null, koff: null }
       }
-      const commonMaterials = DEFAULT_COMMON_MATERIALS.map(m => ({ ...m }))
       const docRef = await addDoc(collection(firestore, 'users', user.uid, 'conjugationRecords'), {
         name: name.trim(),
         customAdapters: [],
@@ -70,7 +70,6 @@ export default function ConjugationRecordList() {
         dateFinished: '',
         preparedBy: '',
         acceptanceCriteria,
-        commonMaterials,
         oligoReconstitutions: [],
         activationStartTime: '',
         conjugationStartTime: '',
@@ -94,6 +93,7 @@ export default function ConjugationRecordList() {
         tubes,
         checklists,
         sectionComments: {},
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         createdAt: now,
         updatedAt: now,
       })
@@ -111,6 +111,8 @@ export default function ConjugationRecordList() {
   async function deleteRecord(e: React.MouseEvent, id: string) {
     e.stopPropagation()
     if (!user || !confirm('Delete this conjugation record?')) return
+    // Firestore does not cascade deletes — clear the attachments subcollection first.
+    await deleteAllAttachments(user.uid, id)
     await deleteDoc(doc(firestore, 'users', user.uid, 'conjugationRecords', id))
   }
 

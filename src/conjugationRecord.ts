@@ -84,16 +84,13 @@ export interface TubeData {
   adapterVariant: string  // name from ADAPTER_VARIANTS
   oligoId: string
   lotNumber: string       // <YYMMDD>-<ID>
-  // Section 3.2 - Variable Input Materials
-  proteinLot: string
-  oligoLot: string
-  // Section 4.1 - Protein Input
+  // Section 3.1 - Protein Input
   inputConc: number | null      // mg/mL
   inputVolume: number | null    // mL
-  // Section 4.3 - Recovery
+  // Section 3.3 - Recovery
   recoveredVolume: number | null // µL
   recoveryVisualCheck: 'clear' | 'turbid' | ''
-  // Section 5 - Post-Exchange Quantification (3x NanoDrop)
+  // Section 4 - Post-Exchange Quantification (3x NanoDrop)
   // Input mode: 'a280' → M1..M3 stored as A₂₈₀ units;
   // 'manual' → operator-entered concentration in postExManualConc (µM), M1..M3 ignored.
   // 'conc' is a legacy mode (mg/mL inputs in M1..M3) kept for backward-compat with existing records.
@@ -103,38 +100,38 @@ export interface TubeData {
   postExM3: number | null
   postExManualConc?: number | null  // µM — used only when postExInputMode === 'manual'
   postExVolume: number | null   // µL (same as recoveredVolume usually)
-  // Section 8 - AKTA Purification
+  // Section 7 - AKTA Purification
   aktaTopUp: boolean
   aktaRunTime: string
   aktaResultFile: string
   aktaFractionsCollected: string
   aktaCollectedVolume: number | null // µL
-  // Section 9.2 - Final Buffer Exchange Recovery
+  // Section 8.2 - Final Buffer Exchange Recovery
   finalRecoveredVolume: number | null // µL
   finalVisualCheck: 'clear' | 'turbid' | ''
-  // Section 10 - Final Quantification (3x NanoDrop)
+  // Section 9 - Final Quantification (3x NanoDrop)
   // Input mode: 'conc' → M1..M3 stored as mg/mL; 'a280' → stored as A₂₈₀ units (uses ε/MW of the Adapter conjugate)
   finalInputMode?: 'conc' | 'a280'
   finalM1: number | null
   finalM2: number | null
   finalM3: number | null
   finalVolume: number | null     // µL
-  // Section 11 - Aliquoting
+  // Section 10 - Aliquoting
   aliquotCount: number | null
   aliquotLotNumber: string
   aliquotLabelsVerified: boolean
-  // Section 12.1 - Yield
+  // Section 11.1 - Yield
   yieldStatus: 'pass' | 'fail' | ''
-  // Section 12.2 - SDS-PAGE
+  // Section 11.2 - SDS-PAGE
   sdsMwShift: boolean | null
   sdsFreeProteinUnder10: boolean | null
   sdsPurityStatus: 'pass' | 'fail' | ''
-  // Section 12.3 - Functional QC
+  // Section 11.3 - Functional QC
   qcImmobRatio: number | null
   qcActivityRatio: number | null
   qcKoff: number | null
   qcStatus: 'pass' | 'fail' | ''
-  // Section 13 - Final Disposition
+  // Section 12 - Final Disposition
   coaReference: string
   disposition: 'release' | 'reject' | 'quarantine' | ''
 }
@@ -147,11 +144,21 @@ export interface OligoReconstitution {
   // For standard oligo MW ~6.8 kDa → µM = ng/µL / 6.8
 }
 
-export interface CommonMaterial {
-  materialName: string
-  internalId: string
-  vendorLot: string
-  verified: boolean
+// ── Attachments (stored in the `attachments` subcollection of a record) ──
+
+export type AttachmentKind = 'akta' | 'fm'
+
+export interface RecordAttachment {
+  id: string
+  kind: AttachmentKind
+  tubeIndex: number
+  dataUrl: string   // JPEG data URL
+  createdAt: Date
+}
+
+export const ATTACHMENT_LABELS: Record<AttachmentKind, string> = {
+  akta: 'ÄKTA Chromatogram',
+  fm: 'FM Sensogram',
 }
 
 export interface ConjugationRecord {
@@ -163,33 +170,31 @@ export interface ConjugationRecord {
   preparedBy: string
   // Section 2.3 - Acceptance Criteria (per variant)
   acceptanceCriteria: Record<string, { minYield: number | null; activity: number | null; koff: number | null }>
-  // Section 3.1 - Common Reagents
-  commonMaterials: CommonMaterial[]
-  // Section 6.1 - Oligo Reconstitution
+  // Section 5.1 - Oligo Reconstitution
   oligoReconstitutions: OligoReconstitution[]
-  // Section 7 - Process Execution
+  // Section 6 - Process Execution
   activationStartTime: string
   conjugationStartTime: string
   conjugationEndTime: string
-  // Section 8.1 - AKTA Setup
+  // Section 7.1 - AKTA Setup
   aktaColumnPosition: string
   aktaMethodName: string
-  // Section 12.2 - SDS-PAGE shared
+  // Section 11.2 - SDS-PAGE shared
   sdsExperimentRef: string
   sdsLoadAmount: string
   sdsStainStart: string
   sdsStainEnd: string
-  // Section 12.3 - Functional QC shared
+  // Section 11.3 - Functional QC shared
   qcExperimentRef: string
-  // Section 13 - Deviations
+  // Section 12 - Deviations
   hasDeviations: boolean
   deviationNcrNumber: string
-  // Section 13.3 - Release Authorization
+  // Section 12.3 - Release Authorization
   releaseOperatorName: string
   releaseOperatorDate: string
   releaseQcName: string
   releaseQcDate: string
-  // Section 11.4 - Storage
+  // Section 10.4 - Storage
   storageLocation: string
   calculatedExpiry: string
   // Custom adapters (user-defined, per record)
@@ -202,10 +207,12 @@ export interface ConjugationRecord {
   // Tubes (1-15)
   tubeCount: number
   tubes: TubeData[]
-  // Procedure checklists (section 4, 6, 7, 8, 9)
+  // Procedure checklists (sections 3, 5, 6, 7, 8, 10, 12)
   checklists: Record<string, boolean>
-  // Section comments (for improvement notes)
+  // Section comments (for improvement notes), keyed 's1'…'s12'
   sectionComments: Record<string, string>
+  // 2 = Materials Traceability removed, sections renumbered. Absent/1 = legacy layout.
+  schemaVersion?: number
   // Timestamps
   createdAt: Date
   updatedAt: Date
@@ -218,8 +225,6 @@ export function createDefaultTube(): TubeData {
     adapterVariant: '',
     oligoId: '',
     lotNumber: '',
-    proteinLot: '',
-    oligoLot: '',
     inputConc: null,
     inputVolume: null,
     recoveredVolume: null,
@@ -258,55 +263,66 @@ export function createDefaultTube(): TubeData {
   }
 }
 
-export const DEFAULT_COMMON_MATERIALS: CommonMaterial[] = [
-  { materialName: 'MeTz-PEG4-NHS Solution', internalId: 'SOL-001', vendorLot: '', verified: false },
-  { materialName: 'PBS-T pH 7.4', internalId: 'SOL-002', vendorLot: '', verified: false },
-  { materialName: 'Buffer A (AKTA)', internalId: 'SOL-003', vendorLot: '', verified: false },
-  { materialName: 'Buffer B (AKTA)', internalId: 'SOL-004', vendorLot: '', verified: false },
-  { materialName: '10K Amicon Filter (0.5 mL)', internalId: 'MAT-001', vendorLot: '', verified: false },
-  { materialName: '10K Amicon Filter (2.0 mL)', internalId: 'MAT-002', vendorLot: '', verified: false },
-]
-
 export const CHECKLIST_ITEMS: Record<string, string> = {
-  // Section 4.2 - Buffer Exchange
+  // Section 3.2 - Buffer Exchange
   'bufex_prewash': 'Pre-Wash: Add 500 µL PBS-T → Spin (14k rcf, 10 min) → Discard flow-through',
   'bufex_load': 'Load: Add Sample + PBS-T to 500 µL → Spin (14k rcf, 10 min) → Discard flow-through',
   'bufex_wash1': 'Wash 1: Add 450 µL PBS-T → Spin (14k rcf, 10 min) → Discard flow-through',
   'bufex_wash2': 'Wash 2: Add 450 µL PBS-T → Spin (14k rcf, 10 min) → Discard flow-through',
   'bufex_wash3': 'Wash 3: Add 450 µL PBS-T → Spin (14k rcf, 10 min) → Discard flow-through',
   'bufex_recovery': 'Recovery: Invert filter → Spin (1k rcf, 2 min) → Collect retentate',
-  // Section 6.2 - Linker
+  // Section 5.2 - Linker
   'linker_dilution': 'Dilution: Add 495 µL PBS-T to 5 µL MeTz-PEG4-NHS Solution (100 mM)',
   'linker_mixing': 'Mixing: Vortex briefly (≤ 3 sec)',
-  // Section 7.1 - Activation
+  // Section 6.1 - Activation
   'activation_addition': 'Addition: Add prescribed Linker Volume to each tube',
   'activation_mixing': 'Mixing: Mix gently by pipetting up and down (5x)',
   'activation_incubation': 'Incubation: 60 min, 25 ºC, 500 rpm',
-  // Section 7.2 - Conjugation
+  // Section 6.2 - Conjugation
   'conjugation_addition': 'Addition: Add prescribed Oligo Volume to each tube',
   'conjugation_mixing': 'Mixing: Mix gently by pipetting up and down (5x)',
   'conjugation_incubation': 'Incubation: 60 min, 25 ºC, 500 rpm',
-  // Section 8.1 - AKTA Setup
+  // Section 7.1 - AKTA Setup
   'akta_column': 'Column Verification: Resource Q in position',
   'akta_buffer_inspect': 'Buffer Inspection: Verify Buffer A and B are particle-free and clear',
   'akta_degas': 'Buffer Degassing: Degas Buffer A and Buffer B',
   'akta_wash': 'System Wash: Perform standard wash/prime routines',
-  // Section 9.1 - Final Buffer Exchange
+  // Section 8.1 - Final Buffer Exchange
   'finbufex_prewash': 'Pre-Wash: Add 500 µL PBS-T → Spin (7k rcf, 10 min) → Discard flow-through',
   'finbufex_load': 'Load: Add Sample + PBS-T to 2 mL → Spin (7k rcf, 10 min) → Discard flow-through',
   'finbufex_wash1': 'Wash 1: Add 1.9 mL PBS-T → Spin (7k rcf, 10 min) → Discard flow-through',
   'finbufex_wash2': 'Wash 2: Add 1.9 mL PBS-T → Spin (7k rcf, 10 min) → Discard flow-through',
   'finbufex_recovery': 'Recovery: Invert filter → Spin (1k rcf, 2 min) → Collect retentate',
-  // Section 11
+  // Section 10
   'aliquot_adjustment': 'Adjustment: Add calculated volume of PBS-T to each tube',
   'aliquot_mixing': 'Mixing: Mix gently by pipetting to ensure homogeneity',
   'aliquot_dispensing': 'Dispensing: Dispense each solution in 110 µL aliquots',
   'aliquot_inventory': 'Inventory: Register New Lots in eLabNext; decrement parent stocks',
   'aliquot_labeling': 'Labeling: Apply FLUICS Label to each tube per Policy',
   'aliquot_storage': 'Store: Tubes placed in -20°C Freezer',
-  // Section 13.1
+  // Section 12.1
   'review_coa': 'Certificate of Analysis (CoA): Generated automatically via software',
   'review_documentation': 'Documentation: Complete (no empty fields, corrections initialed)',
+}
+
+// ── Schema Migration ─────────────────────────────────────────────────
+
+export const CURRENT_SCHEMA_VERSION = 2
+
+/**
+ * v1 → v2: "Materials Traceability" (old section 3) was removed and every
+ * following section moved up by one. Section comments are keyed by section
+ * number, so old s4…s13 become s3…s12. The old s3 comment referred to the
+ * deleted section and is dropped.
+ */
+export function migrateSectionComments(old: Record<string, string> | undefined): Record<string, string> {
+  const migrated: Record<string, string> = {}
+  for (const [key, value] of Object.entries(old || {})) {
+    const num = parseInt(key.replace('s', ''), 10)
+    if (isNaN(num) || num === 3) continue
+    migrated[num < 3 ? key : `s${num - 1}`] = value
+  }
+  return migrated
 }
 
 // ── Calculation Helpers ──────────────────────────────────────────────

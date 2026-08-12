@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { doc, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore'
+import { doc, collection, query, orderBy, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, ChevronDown, ChevronRight, ClipboardList, Check, X, AlertTriangle, Download, MessageSquare, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, ClipboardList, Check, X, AlertTriangle, Download, MessageSquare, Plus, Trash2, BookOpen, ImagePlus } from 'lucide-react'
 import { exportConjugationRecordPDF } from '../exportConjugationRecord'
+import { subscribeAttachments, addAttachment, deleteAttachment } from '../recordAttachments'
 import {
   ADAPTER_VARIANTS,
+  ATTACHMENT_LABELS,
   CHECKLIST_ITEMS,
-  DEFAULT_COMMON_MATERIALS,
+  CURRENT_SCHEMA_VERSION,
   OLIGO_MW_KDA,
   calcTotalMassUg,
   calcAmountNmol,
@@ -20,12 +22,14 @@ import {
   calcVariantVolumes,
   getPostExMedianMgPerMl,
   getFinalMedianMgPerMl,
+  migrateSectionComments,
   type ConjugationRecord,
   type TubeData,
-  type CommonMaterial,
   type OligoReconstitution,
   type AdapterVariant,
   type CustomAdapterDef,
+  type AttachmentKind,
+  type RecordAttachment,
 } from '../conjugationRecord'
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -192,6 +196,83 @@ function VisualCheck({ value, onChange }: { value: string; onChange: (v: 'clear'
   )
 }
 
+// ── ε Library ────────────────────────────────────────────────────────
+
+// Shared shape of the `epsilonLibrary` collection (see EpsilonLibrary page).
+// MW is stored in Da there, while adapter specifications are in kDa.
+interface EpsEntry {
+  id: string
+  name: string
+  epsilon280: string
+  mw: string
+}
+
+// ── Photo Attachments ────────────────────────────────────────────────
+
+function TubePhotos({ kind, tubeIndex, photos, onAdd, onDelete, onView }: {
+  kind: AttachmentKind
+  tubeIndex: number
+  photos: RecordAttachment[]
+  onAdd: (kind: AttachmentKind, tubeIndex: number, file: File) => void
+  onDelete: (id: string) => void
+  onView: (dataUrl: string) => void
+}) {
+  const [busy, setBusy] = useState(false)
+
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return
+    setBusy(true)
+    for (const file of Array.from(files)) {
+      await onAdd(kind, tubeIndex, file)
+    }
+    setBusy(false)
+  }
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
+          {ATTACHMENT_LABELS[kind]}
+        </span>
+        {/* Gallery / file picker */}
+        <label className="cursor-pointer flex items-center gap-1 text-[11px] text-primary font-medium hover:text-primary-dark transition-colors">
+          <ImagePlus className="w-3.5 h-3.5" />
+          {busy ? 'Adding…' : 'Add'}
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={e => { handleFiles(e.target.files); e.target.value = '' }}
+          />
+        </label>
+      </div>
+      {photos.length > 0 && (
+        <div className="flex gap-2 flex-wrap mt-1.5">
+          {photos.map(p => (
+            <div key={p.id} className="relative group">
+              <img
+                src={p.dataUrl}
+                alt={ATTACHMENT_LABELS[kind]}
+                onClick={() => onView(p.dataUrl)}
+                className="w-20 h-20 object-cover rounded-lg border border-slate-200 bg-white cursor-pointer"
+              />
+              <button
+                type="button"
+                onClick={() => onDelete(p.id)}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-white border border-slate-200 rounded-full flex items-center justify-center text-red-400 hover:text-red-600 shadow-sm"
+                title="Remove photo"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main Component ───────────────────────────────────────────────────
 
 export default function ConjugationRecordDetail() {
@@ -201,6 +282,14 @@ export default function ConjugationRecordDetail() {
   const [record, setRecord] = useState<ConjugationRecord | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+
+  // Photo attachments (kept in a subcollection — see recordAttachments.ts)
+  const [attachments, setAttachments] = useState<RecordAttachment[]>([])
+  const [lightbox, setLightbox] = useState<string | null>(null)
+
+  // ε Library import for custom adapter rows
+  const [epsLibrary, setEpsLibrary] = useState<EpsEntry[]>([])
+  const [epsTarget, setEpsTarget] = useState<{ index: number; role: 'protein' | 'adapter' } | null>(null)
 
   // Draft strings for numeric inputs that must be clearable before retyping
   const [inputMassDraft, setInputMassDraft] = useState('')
@@ -223,9 +312,20 @@ export default function ConjugationRecordDetail() {
     const unsub = onSnapshot(ref, (snap) => {
       if (!snap.exists()) { navigate('/records'); return }
       const d = snap.data()
+      // Records created before section 3 was removed still use the old
+      // s1…s13 comment keys — shift them once and persist.
+      const needsMigration = (d.schemaVersion ?? 1) < CURRENT_SCHEMA_VERSION
+      const sectionComments = needsMigration ? migrateSectionComments(d.sectionComments) : (d.sectionComments || {})
+      if (needsMigration) {
+        updateDoc(ref, { sectionComments, schemaVersion: CURRENT_SCHEMA_VERSION }).catch(err =>
+          console.error('Migration error:', err)
+        )
+      }
       setRecord({
         id: snap.id,
         ...d,
+        sectionComments,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         createdAt: d.createdAt?.toDate() || new Date(),
         updatedAt: d.updatedAt?.toDate() || new Date(),
       } as ConjugationRecord)
@@ -233,6 +333,29 @@ export default function ConjugationRecordDetail() {
     })
     return unsub
   }, [user, id, navigate])
+
+  // Load photo attachments
+  useEffect(() => {
+    if (!user || !id) return
+    return subscribeAttachments(user.uid, id, setAttachments)
+  }, [user, id])
+
+  // Load ε Library (shared with the Conjugation Calculator)
+  useEffect(() => {
+    if (!user) return
+    const q = query(
+      collection(firestore, 'users', user.uid, 'epsilonLibrary'),
+      orderBy('createdAt', 'desc')
+    )
+    return onSnapshot(q, (snap) => {
+      setEpsLibrary(snap.docs.map(d => ({
+        id: d.id,
+        name: d.data().name || '',
+        epsilon280: d.data().epsilon280 || '',
+        mw: d.data().mw || '',
+      })))
+    })
+  }, [user])
 
   // Save helper - debounced
   const save = useCallback(async (updates: Partial<ConjugationRecord>) => {
@@ -279,13 +402,48 @@ export default function ConjugationRecordDetail() {
     save({ sectionComments })
   }
 
-  // Update common material
-  function updateMaterial(index: number, field: keyof CommonMaterial, value: string | boolean) {
-    if (!record) return
-    const commonMaterials = [...record.commonMaterials]
-    commonMaterials[index] = { ...commonMaterials[index], [field]: value }
-    setRecord({ ...record, commonMaterials })
-    save({ commonMaterials })
+  // Photo attachments
+  async function addPhoto(kind: AttachmentKind, tubeIndex: number, file: File) {
+    if (!user || !id) return
+    try {
+      await addAttachment(user.uid, id, kind, tubeIndex, file)
+    } catch (err) {
+      console.error('Photo upload error:', err)
+    }
+  }
+
+  async function removePhoto(attachmentId: string) {
+    if (!user || !id) return
+    try {
+      await deleteAttachment(user.uid, id, attachmentId)
+    } catch (err) {
+      console.error('Photo delete error:', err)
+    }
+  }
+
+  function photosFor(kind: AttachmentKind, tubeIndex: number) {
+    return attachments.filter(a => a.kind === kind && a.tubeIndex === tubeIndex)
+  }
+
+  // Apply an ε Library entry to a custom adapter row.
+  // Library MW is stored in Da; adapter specifications use kDa.
+  function applyEpsEntry(entry: EpsEntry) {
+    if (!record || !epsTarget) return
+    const { index, role } = epsTarget
+    const mwKda = entry.mw ? parseFloat(entry.mw) / 1000 : null
+    const e280 = entry.epsilon280 ? parseFloat(entry.epsilon280) : null
+    const customAdapters = [...(record.customAdapters || [])]
+    const target = { ...customAdapters[index] }
+    if (mwKda !== null && !isNaN(mwKda)) {
+      target[role === 'protein' ? 'mwProtein' : 'mwAdapter'] = Math.round(mwKda * 100) / 100
+    }
+    if (e280 !== null && !isNaN(e280)) {
+      target[role === 'protein' ? 'e280Protein' : 'e280Adapter'] = e280
+    }
+    customAdapters[index] = target
+    setRecord({ ...record, customAdapters })
+    save({ customAdapters })
+    setEpsTarget(null)
   }
 
   // Update oligo reconstitution
@@ -388,7 +546,7 @@ export default function ConjugationRecordDetail() {
           </p>
         </div>
         <button
-          onClick={() => exportConjugationRecordPDF(r)}
+          onClick={() => exportConjugationRecordPDF(r, attachments)}
           className="w-10 h-10 bg-primary text-white rounded-full flex items-center justify-center hover:bg-primary-dark active:scale-95 transition-all shadow-lg"
           title="Download PDF"
         >
@@ -525,13 +683,23 @@ export default function ConjugationRecordDetail() {
                   {(r.customAdapters || []).map((c, i) => (
                     <tr key={`custom-${i}`} className="border-b border-primary/20 bg-primary/5">
                       <td className="px-1 py-1">
-                        <input
-                          type="text"
-                          value={c.name}
-                          onChange={e => updateCustomAdapter(i, 'name', e.target.value)}
-                          placeholder="Name"
-                          className="w-full bg-transparent border border-primary/30 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary-light"
-                        />
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            value={c.name}
+                            onChange={e => updateCustomAdapter(i, 'name', e.target.value)}
+                            placeholder="Name"
+                            className="flex-1 min-w-0 bg-transparent border border-primary/30 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary-light"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setEpsTarget({ index: i, role: 'protein' })}
+                            className="shrink-0 text-primary hover:text-primary-dark transition-colors"
+                            title="Import MW and ε₂₈₀ from ε Library"
+                          >
+                            <BookOpen className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                       <td className="px-1 py-1">
                         <input type="number" step="any" value={c.mwProtein || ''} onChange={e => updateCustomAdapter(i, 'mwProtein', parseFloat(e.target.value) || 0)} placeholder="kDa" className="w-full bg-transparent border border-primary/30 rounded px-1.5 py-0.5 text-xs text-right font-mono focus:outline-none focus:ring-1 focus:ring-primary-light" />
@@ -629,34 +797,10 @@ export default function ConjugationRecordDetail() {
           </div>
         </Section>
 
-        {/* ── Section 3: Materials Traceability ── */}
-        <Section num={3} title="Materials Traceability" comment={r.sectionComments?.['s3']} onCommentChange={v => updateComment('s3', v)}>
+        {/* ── Section 3: Buffer Exchange ── */}
+        <Section num={3} title="Buffer Exchange" comment={r.sectionComments?.['s3']} onCommentChange={v => updateComment('s3', v)}>
           <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">3.1 Common Reagents & Consumables</h3>
-            {(r.commonMaterials || DEFAULT_COMMON_MATERIALS).map((m, i) => (
-              <div key={i} className="flex items-center gap-2 mb-2">
-                <span className="text-xs text-slate-600 w-44 shrink-0 truncate" title={m.materialName}>{m.materialName}</span>
-                <span className="text-xs text-slate-400 w-16 shrink-0">{m.internalId}</span>
-                <TextInput value={m.vendorLot} onChange={v => updateMaterial(i, 'vendorLot', v)} placeholder="Lot #" className="flex-1" />
-                <CheckItem label="" checked={m.verified} onChange={v => updateMaterial(i, 'verified', v)} />
-              </div>
-            ))}
-
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">3.2 Variable Input Materials</h3>
-            {tubeNums.map(i => (
-              <div key={i} className="flex items-center gap-2 mb-2">
-                <span className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-bold text-sm shrink-0">{i + 1}</span>
-                <TextInput value={r.tubes[i]?.proteinLot || ''} onChange={v => updateTube(i, 'proteinLot', v)} placeholder="Protein Lot #" className="flex-1" />
-                <TextInput value={r.tubes[i]?.oligoLot || ''} onChange={v => updateTube(i, 'oligoLot', v)} placeholder="Oligo Lot #" className="flex-1" />
-              </div>
-            ))}
-          </div>
-        </Section>
-
-        {/* ── Section 4: Buffer Exchange ── */}
-        <Section num={4} title="Buffer Exchange" comment={r.sectionComments?.['s4']} onCommentChange={v => updateComment('s4', v)}>
-          <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">4.1 Protein Input Parameters</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">3.1 Protein Input Parameters</h3>
             {tubeNums.map(i => {
               const t = r.tubes[i]
               const inputMass = t.inputConc !== null && t.inputVolume !== null ? t.inputConc * t.inputVolume : null
@@ -676,7 +820,7 @@ export default function ConjugationRecordDetail() {
               )
             })}
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">4.2 Procedure</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">3.2 Procedure</h3>
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 mb-2">
               <p className="text-xs text-amber-700 font-medium">⚠ Align all filters with Membrane Panel facing OUTWARDS</p>
             </div>
@@ -684,7 +828,7 @@ export default function ConjugationRecordDetail() {
               <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
             ))}
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">4.3 Recovery Parameters</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">3.3 Recovery Parameters</h3>
             {tubeNums.map(i => (
               <div key={i} className="flex items-center gap-2 mb-2">
                 <span className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-bold text-sm shrink-0">{i + 1}</span>
@@ -695,10 +839,10 @@ export default function ConjugationRecordDetail() {
           </div>
         </Section>
 
-        {/* ── Section 5: Post-Exchange Quantification ── */}
-        <Section num={5} title="Post-Exchange Quantification" comment={r.sectionComments?.['s5']} onCommentChange={v => updateComment('s5', v)}>
+        {/* ── Section 4: Post-Exchange Quantification ── */}
+        <Section num={4} title="Post-Exchange Quantification" comment={r.sectionComments?.['s4']} onCommentChange={v => updateComment('s4', v)}>
           <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">5.1 Measurements</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">4.1 Measurements</h3>
             <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. Enter <b>A₂₈₀</b> (3 readings, concentration derived via variant ε and MW) or switch to <b>Manual</b> to enter the concentration directly in µM.</p>
             {tubeNums.map(i => {
               const t = r.tubes[i]
@@ -768,8 +912,8 @@ export default function ConjugationRecordDetail() {
               )
             })}
 
-            {/* 5.2 Linker & Oligo Volumes (per tube) — input mass derived from 5.1 */}
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">5.2 Linker & Oligo Volumes (per tube)</h3>
+            {/* 4.2 Linker & Oligo Volumes (per tube) — input mass derived from 5.1 */}
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">4.2 Linker & Oligo Volumes (per tube)</h3>
             <p className="text-xs text-slate-500 mb-2">Volumes computed from measured post-exchange mass and current mixing ratio (Section 2.0).</p>
             <div className="overflow-x-auto -mx-4 px-4">
               <table className="w-full text-xs border-collapse">
@@ -813,10 +957,10 @@ export default function ConjugationRecordDetail() {
           </div>
         </Section>
 
-        {/* ── Section 6: Reagent Preparation ── */}
-        <Section num={6} title="Reagent Preparation" comment={r.sectionComments?.['s6']} onCommentChange={v => updateComment('s6', v)}>
+        {/* ── Section 5: Reagent Preparation ── */}
+        <Section num={5} title="Reagent Preparation" comment={r.sectionComments?.['s5']} onCommentChange={v => updateComment('s5', v)}>
           <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">6.1 Oligo Reconstitution</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">5.1 Oligo Reconstitution</h3>
             <p className="text-xs text-slate-500 mb-2">Add 100 µL PBS-T per lyophilised tube. QC: NanoDrop, ssDNA mode, Blank PBS-T.</p>
             {(r.oligoReconstitutions || []).map((oligo, i) => {
               const calcUm = calcOligoConcentrationUm(oligo.measuredNgUl, OLIGO_MW_KDA)
@@ -836,26 +980,26 @@ export default function ConjugationRecordDetail() {
             })}
             <button onClick={addOligo} className="text-xs text-primary font-medium hover:underline mt-1">+ Add Oligo</button>
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">6.2 Linker Working Solution</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">5.2 Linker Working Solution</h3>
             {['linker_dilution', 'linker_mixing'].map(key => (
               <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
             ))}
             <div className="bg-red-50 border border-red-200 rounded-lg p-2 mt-2">
-              <p className="text-xs text-red-700 font-medium">🔴 CRITICAL: Proceed to 7.1 Protein Activation immediately (within 2 min)</p>
+              <p className="text-xs text-red-700 font-medium">🔴 CRITICAL: Proceed to 6.1 Protein Activation immediately (within 2 min)</p>
             </div>
           </div>
         </Section>
 
-        {/* ── Section 7: Process Execution ── */}
-        <Section num={7} title="Process Execution" comment={r.sectionComments?.['s7']} onCommentChange={v => updateComment('s7', v)}>
+        {/* ── Section 6: Process Execution ── */}
+        <Section num={6} title="Process Execution" comment={r.sectionComments?.['s6']} onCommentChange={v => updateComment('s6', v)}>
           <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">7.1 Protein Activation</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">6.1 Protein Activation</h3>
             <TextInput label="Start Time" value={r.activationStartTime} onChange={v => updateField('activationStartTime', v)} placeholder="HH:MM" className="mb-2 w-32" />
             {['activation_addition', 'activation_mixing', 'activation_incubation'].map(key => (
               <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
             ))}
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">7.2 Oligo Conjugation</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">6.2 Oligo Conjugation</h3>
             <TextInput label="Start Time" value={r.conjugationStartTime} onChange={v => updateField('conjugationStartTime', v)} placeholder="HH:MM" className="mb-2 w-32" />
             {['conjugation_addition', 'conjugation_mixing', 'conjugation_incubation'].map(key => (
               <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
@@ -864,10 +1008,10 @@ export default function ConjugationRecordDetail() {
           </div>
         </Section>
 
-        {/* ── Section 8: AKTA Purification ── */}
-        <Section num={8} title="AKTA Purification" comment={r.sectionComments?.['s8']} onCommentChange={v => updateComment('s8', v)}>
+        {/* ── Section 7: AKTA Purification ── */}
+        <Section num={7} title="AKTA Purification" comment={r.sectionComments?.['s7']} onCommentChange={v => updateComment('s7', v)}>
           <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">8.1 System Setup & Verification</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">7.1 System Setup & Verification</h3>
             {['akta_column', 'akta_buffer_inspect', 'akta_degas', 'akta_wash'].map(key => (
               <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
             ))}
@@ -876,7 +1020,7 @@ export default function ConjugationRecordDetail() {
               <TextInput label="Method Name" value={r.aktaMethodName} onChange={v => updateField('aktaMethodName', v)} />
             </div>
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">8.2 Purification Runs</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">7.2 Purification Runs</h3>
             {tubeNums.map(i => (
               <div key={i} className="bg-slate-50 rounded-xl p-3 mb-2">
                 <div className="flex items-center gap-2 mb-2">
@@ -890,16 +1034,24 @@ export default function ConjugationRecordDetail() {
                   <TextInput label="Fractions" value={r.tubes[i].aktaFractionsCollected} onChange={v => updateTube(i, 'aktaFractionsCollected', v)} />
                   <NumInput label="Collected Vol" value={r.tubes[i].aktaCollectedVolume} onChange={v => updateTube(i, 'aktaCollectedVolume', v)} unit="µL" />
                 </div>
+                <TubePhotos
+                  kind="akta"
+                  tubeIndex={i}
+                  photos={photosFor('akta', i)}
+                  onAdd={addPhoto}
+                  onDelete={removePhoto}
+                  onView={setLightbox}
+                />
               </div>
             ))}
           </div>
         </Section>
 
-        {/* ── Section 9: Final Buffer Exchange ── */}
-        <Section num={9} title="Final Buffer Exchange" comment={r.sectionComments?.['s9']} onCommentChange={v => updateComment('s9', v)}>
+        {/* ── Section 8: Final Buffer Exchange ── */}
+        <Section num={8} title="Final Buffer Exchange" comment={r.sectionComments?.['s8']} onCommentChange={v => updateComment('s8', v)}>
           <div className="mt-3">
             <p className="text-xs text-slate-500 mb-2">Filter: 10K Amicon, 2.0 mL format. Centrifugation: 7k rcf.</p>
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">9.1 Procedure</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">8.1 Procedure</h3>
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 mb-2">
               <p className="text-xs text-amber-700 font-medium">⚠ Align 2.0 mL filters with Membrane Panel facing OUTWARDS</p>
             </div>
@@ -907,7 +1059,7 @@ export default function ConjugationRecordDetail() {
               <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
             ))}
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">9.2 Recovery Parameters</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">8.2 Recovery Parameters</h3>
             {tubeNums.map(i => (
               <div key={i} className="flex items-center gap-2 mb-2">
                 <span className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-bold text-sm shrink-0">{i + 1}</span>
@@ -918,8 +1070,8 @@ export default function ConjugationRecordDetail() {
           </div>
         </Section>
 
-        {/* ── Section 10: Final Quantification ── */}
-        <Section num={10} title="Final Quantification" comment={r.sectionComments?.['s10']} onCommentChange={v => updateComment('s10', v)}>
+        {/* ── Section 9: Final Quantification ── */}
+        <Section num={9} title="Final Quantification" comment={r.sectionComments?.['s9']} onCommentChange={v => updateComment('s9', v)}>
           <div className="mt-3">
             <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. Use ε₂₈₀ Adapter (not Protein). Switch input to A₂₈₀ when only absorbance is recorded — concentration is derived using the variant's ε_Adapter and MW_Adapter.</p>
             {tubeNums.map(i => {
@@ -974,10 +1126,10 @@ export default function ConjugationRecordDetail() {
           </div>
         </Section>
 
-        {/* ── Section 11: Aliquoting & Storage ── */}
-        <Section num={11} title="Aliquoting & Storage" comment={r.sectionComments?.['s11']} onCommentChange={v => updateComment('s11', v)}>
+        {/* ── Section 10: Aliquoting & Storage ── */}
+        <Section num={10} title="Aliquoting & Storage" comment={r.sectionComments?.['s10']} onCommentChange={v => updateComment('s10', v)}>
           <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">11.1 Dilution to 2.6 µM</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">10.1 Dilution to 2.6 µM</h3>
             {tubeNums.map(i => {
               const t = r.tubes[i]
               const variant = getVariant(t.adapterVariant, r)
@@ -999,7 +1151,7 @@ export default function ConjugationRecordDetail() {
               )
             })}
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">11.2–11.3 Aliquoting & Inventory</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">10.2–10.3 Aliquoting & Inventory</h3>
             {['aliquot_adjustment', 'aliquot_mixing', 'aliquot_dispensing', 'aliquot_inventory', 'aliquot_labeling'].map(key => (
               <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
             ))}
@@ -1012,7 +1164,7 @@ export default function ConjugationRecordDetail() {
               </div>
             ))}
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">11.4 Storage</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">10.4 Storage</h3>
             <CheckItem label={CHECKLIST_ITEMS['aliquot_storage']} checked={r.checklists?.['aliquot_storage'] || false} onChange={v => updateChecklist('aliquot_storage', v)} />
             <div className="grid grid-cols-2 gap-2 mt-2">
               <TextInput label="Storage Location" value={r.storageLocation} onChange={v => updateField('storageLocation', v)} placeholder="-20°C Freezer, Location..." />
@@ -1021,10 +1173,10 @@ export default function ConjugationRecordDetail() {
           </div>
         </Section>
 
-        {/* ── Section 12: Quality Control ── */}
-        <Section num={12} title="Quality Control" comment={r.sectionComments?.['s12']} onCommentChange={v => updateComment('s12', v)}>
+        {/* ── Section 11: Quality Control ── */}
+        <Section num={11} title="Quality Control" comment={r.sectionComments?.['s11']} onCommentChange={v => updateComment('s11', v)}>
           <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">12.1 Yield Assessment</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">11.1 Yield Assessment</h3>
             {tubeNums.map(i => {
               const t = r.tubes[i]
               const variant = getVariant(t.adapterVariant, r)
@@ -1054,7 +1206,7 @@ export default function ConjugationRecordDetail() {
               )
             })}
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">12.2 Purity & Identity (SDS-PAGE)</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">11.2 Purity & Identity (SDS-PAGE)</h3>
             <div className="grid grid-cols-2 gap-2 mb-3">
               <TextInput label="Experiment Ref" value={r.sdsExperimentRef} onChange={v => updateField('sdsExperimentRef', v)} />
               <TextInput label="Load Amount" value={r.sdsLoadAmount} onChange={v => updateField('sdsLoadAmount', v)} placeholder="µg per lane" />
@@ -1080,7 +1232,7 @@ export default function ConjugationRecordDetail() {
               )
             })}
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">12.3 Functional QC (Focal Molography)</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">11.3 Functional QC (Focal Molography)</h3>
             <TextInput label="Experiment Ref" value={r.qcExperimentRef} onChange={v => updateField('qcExperimentRef', v)} className="mb-3" />
             {tubeNums.map(i => {
               const t = r.tubes[i]
@@ -1096,16 +1248,24 @@ export default function ConjugationRecordDetail() {
                     <NumInput label="Activity Ratio" value={t.qcActivityRatio} onChange={v => updateTube(i, 'qcActivityRatio', v)} />
                     <NumInput label="k_off (s⁻¹)" value={t.qcKoff} onChange={v => updateTube(i, 'qcKoff', v)} />
                   </div>
+                  <TubePhotos
+                    kind="fm"
+                    tubeIndex={i}
+                    photos={photosFor('fm', i)}
+                    onAdd={addPhoto}
+                    onDelete={removePhoto}
+                    onView={setLightbox}
+                  />
                 </div>
               )
             })}
           </div>
         </Section>
 
-        {/* ── Section 13: Final Disposition ── */}
-        <Section num={13} title="Final Disposition" comment={r.sectionComments?.['s13']} onCommentChange={v => updateComment('s13', v)}>
+        {/* ── Section 12: Final Disposition ── */}
+        <Section num={12} title="Final Disposition" comment={r.sectionComments?.['s12']} onCommentChange={v => updateComment('s12', v)}>
           <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">13.1 Batch Review</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">12.1 Batch Review</h3>
             {['review_coa', 'review_documentation'].map(key => (
               <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
             ))}
@@ -1124,7 +1284,7 @@ export default function ConjugationRecordDetail() {
               )}
             </div>
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">13.2 Final Decision</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">12.2 Final Decision</h3>
             {tubeNums.map(i => {
               const t = r.tubes[i]
               return (
@@ -1152,7 +1312,7 @@ export default function ConjugationRecordDetail() {
               )
             })}
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">13.3 Release Authorization</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">12.3 Release Authorization</h3>
             <div className="grid grid-cols-2 gap-2">
               <TextInput label="Operator Name" value={r.releaseOperatorName} onChange={v => updateField('releaseOperatorName', v)} />
               <TextInput label="Operator Date" value={r.releaseOperatorDate} onChange={v => updateField('releaseOperatorDate', v)} placeholder="YYYY-MM-DD" />
@@ -1162,6 +1322,73 @@ export default function ConjugationRecordDetail() {
           </div>
         </Section>
       </div>
+
+      {/* ε Library picker — fills MW and ε₂₈₀ of a custom adapter */}
+      {epsTarget && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
+          onClick={() => setEpsTarget(null)}
+        >
+          <div className="bg-white rounded-2xl p-4 w-full max-w-md max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-slate-900 mb-1">ε Library</h2>
+            <p className="text-xs text-slate-400 mb-3">
+              Import into <b>{r.customAdapters?.[epsTarget.index]?.name || 'custom adapter'}</b>. MW is converted from Da to kDa.
+            </p>
+
+            {/* Which pair of columns to fill */}
+            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs mb-3">
+              {(['protein', 'adapter'] as const).map(role => (
+                <button
+                  key={role}
+                  type="button"
+                  onClick={() => setEpsTarget({ ...epsTarget, role })}
+                  className={`px-3 py-1.5 capitalize ${
+                    epsTarget.role === role ? 'bg-primary text-white' : 'bg-white text-slate-500 hover:bg-slate-100'
+                  }`}
+                >{role}</button>
+              ))}
+            </div>
+
+            {epsLibrary.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-6">
+                Your ε Library is empty. Add entries on the ε Library page first.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {epsLibrary.map(entry => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => applyEpsEntry(entry)}
+                    className="w-full text-left bg-slate-50 rounded-xl p-3 hover:bg-blue-50 transition-colors"
+                  >
+                    <div className="font-medium text-slate-900 text-sm">{entry.name}</div>
+                    <div className="text-[11px] text-slate-400 font-mono">
+                      ε₂₈₀ = {entry.epsilon280 ? Number(entry.epsilon280).toLocaleString() : '—'}
+                      {entry.mw && <> · MW = {(Number(entry.mw) / 1000).toFixed(2)} kDa</>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={() => setEpsTarget(null)}
+              className="mt-4 w-full py-2.5 text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors text-sm"
+            >Close</button>
+          </div>
+        </div>
+      )}
+
+      {/* Photo lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50"
+          onClick={() => setLightbox(null)}
+        >
+          <img src={lightbox} alt="" className="max-w-full max-h-full object-contain rounded-lg" />
+        </div>
+      )}
     </div>
   )
 }

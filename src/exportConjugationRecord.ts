@@ -12,8 +12,11 @@ import {
   calcVariantVolumes,
   getPostExMedianMgPerMl,
   getFinalMedianMgPerMl,
+  ATTACHMENT_LABELS,
   type ConjugationRecord,
   type AdapterVariant,
+  type AttachmentKind,
+  type RecordAttachment,
 } from './conjugationRecord'
 
 function getVariant(name: string, record: ConjugationRecord): AdapterVariant | undefined {
@@ -33,7 +36,7 @@ const PRIMARY = '#312783'
 const GRAY = '#64748b'
 const LIGHT_GRAY = '#94a3b8'
 
-export function exportConjugationRecordPDF(r: ConjugationRecord) {
+export function exportConjugationRecordPDF(r: ConjugationRecord, attachments: RecordAttachment[] = []) {
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const pageWidth = pdf.internal.pageSize.getWidth()
   const margin = 15
@@ -197,6 +200,58 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     y += 7
   }
 
+  /**
+   * Render every attached photo of a given kind, two per row, each labelled
+   * with its tube number. Images keep their aspect ratio.
+   */
+  function addPhotos(kind: AttachmentKind) {
+    const photos = attachments
+      .filter(a => a.kind === kind && a.tubeIndex < r.tubeCount)
+      .sort((a, b) => a.tubeIndex - b.tubeIndex || a.createdAt.getTime() - b.createdAt.getTime())
+    if (photos.length === 0) return
+
+    addSubsection(ATTACHMENT_LABELS[kind] + 's')
+
+    const gap = 5
+    const colWidth = (contentWidth - gap) / 2
+    let col = 0
+    let rowHeight = 0
+
+    for (const photo of photos) {
+      let imgHeight = colWidth * 0.66
+      try {
+        const props = pdf.getImageProperties(photo.dataUrl)
+        imgHeight = (props.height / props.width) * colWidth
+      } catch (err) {
+        console.error('Could not read image for PDF:', err)
+        continue
+      }
+
+      // Start a new row (and page, if needed) before placing a left-column image
+      if (col === 0) {
+        checkPageBreak(imgHeight + 8)
+        rowHeight = 0
+      }
+
+      const x = margin + col * (colWidth + gap)
+      pdf.setFontSize(7)
+      pdf.setTextColor(GRAY)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text(`Tube ${photo.tubeIndex + 1}`, x, y)
+      pdf.addImage(photo.dataUrl, 'JPEG', x, y + 1.5, colWidth, imgHeight)
+
+      rowHeight = Math.max(rowHeight, imgHeight + 5)
+      col++
+      if (col === 2) {
+        col = 0
+        y += rowHeight + 4
+      }
+    }
+    // Flush a trailing half-row
+    if (col === 1) y += rowHeight + 4
+    pdf.setFont('helvetica', 'normal')
+  }
+
   const tubeNums = Array.from({ length: r.tubeCount }, (_, i) => i)
 
   // ══════════════════════════════════════════════════════════════════
@@ -270,22 +325,8 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
   )
 
   // ── Section 3 ──
-  addSectionHeader(3, 'MATERIALS TRACEABILITY')
-  addSubsection('3.1 Common Reagents & Consumables')
-  addTable(
-    [['Material Name', 'Internal ID', 'Vendor / Lot #', 'Verified']],
-    (r.commonMaterials || []).map(m => [m.materialName, m.internalId, m.vendorLot || '—', check(m.verified)])
-  )
-
-  addSubsection('3.2 Variable Input Materials')
-  addTable(
-    [['Tube', 'Protein Lot #', 'Oligo Lot #']],
-    tubeNums.map(i => [String(i + 1), r.tubes[i].proteinLot || '—', r.tubes[i].oligoLot || '—'])
-  )
-
-  // ── Section 4 ──
-  addSectionHeader(4, 'BUFFER EXCHANGE')
-  addSubsection('4.1 Protein Input Parameters')
+  addSectionHeader(3, 'BUFFER EXCHANGE')
+  addSubsection('3.1 Protein Input Parameters')
   addTable(
     [['Tube', 'Conc (mg/mL)', 'Volume (mL)', 'Input Mass (mg)', '0.9–1.1 mg?']],
     tubeNums.map(i => {
@@ -296,21 +337,21 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     })
   )
 
-  addSubsection('4.2 Procedure')
+  addSubsection('3.2 Procedure')
   addWarning('Align all filters with Membrane Panel facing OUTWARDS')
   addChecklist(['bufex_prewash', 'bufex_load', 'bufex_wash1', 'bufex_wash2', 'bufex_wash3', 'bufex_recovery'])
 
-  addSubsection('4.3 Recovery Parameters')
+  addSubsection('3.3 Recovery Parameters')
   addTable(
     [['Tube', 'Recovered Volume (µL)', 'Visual Check']],
     tubeNums.map(i => [String(i + 1), fmt(r.tubes[i].recoveredVolume, 0), r.tubes[i].recoveryVisualCheck || '—'])
   )
 
-  // ── Section 5 ──
-  addSectionHeader(5, 'POST-EXCHANGE QUANTIFICATION')
+  // ── Section 4 ──
+  addSectionHeader(4, 'POST-EXCHANGE QUANTIFICATION')
   addText('Method: NanoDrop, Protein A280, Blank with PBS-T.', { size: 8, color: GRAY })
   y += 2
-  addSubsection('5.1 Measurements')
+  addSubsection('4.1 Measurements')
   addTable(
     [['Tube', 'Input', 'M1', 'M2', 'M3', 'Median (mg/mL)', 'Vol (µL)', 'Mass (µg)', 'Amount (nmol)', 'Conc (µM)', '≥ 900 µg?']],
     tubeNums.map(i => {
@@ -331,7 +372,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     })
   )
 
-  addSubsection('5.2 Linker & Oligo Volumes (per tube)')
+  addSubsection('4.2 Linker & Oligo Volumes (per tube)')
   addText('Input mass derived from measured post-exchange mass. Ratio (Protein : Linker : Oligo) = 1 : ' + lr + ' : ' + or_, { size: 8, color: GRAY })
   y += 2
   addTable(
@@ -351,9 +392,9 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     })
   )
 
-  // ── Section 6 ──
-  addSectionHeader(6, 'REAGENT PREPARATION')
-  addSubsection('6.1 Oligo Reconstitution')
+  // ── Section 5 ──
+  addSectionHeader(5, 'REAGENT PREPARATION')
+  addSubsection('5.1 Oligo Reconstitution')
   if ((r.oligoReconstitutions || []).length > 0) {
     addTable(
       [['Oligo ID', '# Tubes', 'Measured (ng/µL)', 'Calculated (µM)', '≥ 95 µM?']],
@@ -365,29 +406,29 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     )
   }
 
-  addSubsection('6.2 Linker Working Solution')
+  addSubsection('5.2 Linker Working Solution')
   addChecklist(['linker_dilution', 'linker_mixing'])
-  addCritical('Proceed to 7.1 Protein Activation immediately (within 2 min)')
+  addCritical('Proceed to 6.1 Protein Activation immediately (within 2 min)')
 
-  // ── Section 7 ──
-  addSectionHeader(7, 'PROCESS EXECUTION')
-  addSubsection('7.1 Protein Activation')
+  // ── Section 6 ──
+  addSectionHeader(6, 'PROCESS EXECUTION')
+  addSubsection('6.1 Protein Activation')
   addField('Start Time', r.activationStartTime)
   addChecklist(['activation_addition', 'activation_mixing', 'activation_incubation'])
 
-  addSubsection('7.2 Oligo Conjugation')
+  addSubsection('6.2 Oligo Conjugation')
   addField('Start Time', r.conjugationStartTime)
   addChecklist(['conjugation_addition', 'conjugation_mixing', 'conjugation_incubation'])
   addField('End Time', r.conjugationEndTime)
 
-  // ── Section 8 ──
-  addSectionHeader(8, 'AKTA PURIFICATION')
-  addSubsection('8.1 System Setup & Verification')
+  // ── Section 7 ──
+  addSectionHeader(7, 'AKTA PURIFICATION')
+  addSubsection('7.1 System Setup & Verification')
   addChecklist(['akta_column', 'akta_buffer_inspect', 'akta_degas', 'akta_wash'])
   addFieldPair('Column Position', r.aktaColumnPosition, 'Method Name', r.aktaMethodName)
   y += 2
 
-  addSubsection('8.2 Purification Runs')
+  addSubsection('7.2 Purification Runs')
   addTable(
     [['Tube', 'Top-up', 'Run Time', 'Result File', 'Fractions', 'Collected Vol (µL)']],
     tubeNums.map(i => {
@@ -395,23 +436,24 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
       return [String(i + 1), check(t.aktaTopUp), t.aktaRunTime || '—', t.aktaResultFile || '—', t.aktaFractionsCollected || '—', fmt(t.aktaCollectedVolume, 0)]
     })
   )
+  addPhotos('akta')
 
-  // ── Section 9 ──
-  addSectionHeader(9, 'FINAL BUFFER EXCHANGE')
+  // ── Section 8 ──
+  addSectionHeader(8, 'FINAL BUFFER EXCHANGE')
   addText('Filter: 10K Amicon, 2.0 mL format. Centrifugation: 7k rcf.', { size: 8, color: GRAY })
   y += 2
-  addSubsection('9.1 Procedure')
+  addSubsection('8.1 Procedure')
   addWarning('Align 2.0 mL filters with Membrane Panel facing OUTWARDS')
   addChecklist(['finbufex_prewash', 'finbufex_load', 'finbufex_wash1', 'finbufex_wash2', 'finbufex_recovery'])
 
-  addSubsection('9.2 Recovery Parameters')
+  addSubsection('8.2 Recovery Parameters')
   addTable(
     [['Tube', 'Recovered Volume (µL)', 'Visual Check']],
     tubeNums.map(i => [String(i + 1), fmt(r.tubes[i].finalRecoveredVolume, 0), r.tubes[i].finalVisualCheck || '—'])
   )
 
-  // ── Section 10 ──
-  addSectionHeader(10, 'FINAL QUANTIFICATION')
+  // ── Section 9 ──
+  addSectionHeader(9, 'FINAL QUANTIFICATION')
   addText('Method: NanoDrop, Protein A280, Blank with PBS-T. Use ε₂₈₀ Adapter (not Protein).', { size: 8, color: GRAY })
   y += 2
   addTable(
@@ -430,9 +472,9 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     })
   )
 
-  // ── Section 11 ──
-  addSectionHeader(11, 'ALIQUOTING & STORAGE')
-  addSubsection('11.1 Dilution to Target Concentration (2.6 µM)')
+  // ── Section 10 ──
+  addSectionHeader(10, 'ALIQUOTING & STORAGE')
+  addSubsection('10.1 Dilution to Target Concentration (2.6 µM)')
   addTable(
     [['Tube', 'Amount (nmol)', 'Conc (µM)', 'Target Volume (µL)', 'Current Volume (µL)', 'Buffer to Add (µL)']],
     tubeNums.map(i => {
@@ -459,13 +501,13 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     })
   )
 
-  addSubsection('11.4 Storage')
+  addSubsection('10.4 Storage')
   addChecklist(['aliquot_storage'])
   addFieldPair('Storage Location', r.storageLocation, 'Calculated Expiry', r.calculatedExpiry)
 
-  // ── Section 12 ──
-  addSectionHeader(12, 'QUALITY CONTROL')
-  addSubsection('12.1 Yield Assessment')
+  // ── Section 11 ──
+  addSectionHeader(11, 'QUALITY CONTROL')
+  addSubsection('11.1 Yield Assessment')
   addTable(
     [['Tube', 'Adapter', 'Start (nmol)', 'Final (nmol)', 'Yield %', 'Spec', 'Status']],
     tubeNums.map(i => {
@@ -490,7 +532,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     })
   )
 
-  addSubsection('12.2 Purity & Identity (SDS-PAGE)')
+  addSubsection('11.2 Purity & Identity (SDS-PAGE)')
   addFieldPair('Experiment Ref', r.sdsExperimentRef, 'Load Amount', r.sdsLoadAmount)
   addFieldPair('Staining Start', r.sdsStainStart, 'Staining End', r.sdsStainEnd)
   y += 2
@@ -502,7 +544,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     })
   )
 
-  addSubsection('12.3 Functional QC (Focal Molography)')
+  addSubsection('11.3 Functional QC (Focal Molography)')
   addField('Experiment Ref', r.qcExperimentRef)
   y += 2
   addTable(
@@ -512,15 +554,16 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
       return [String(i + 1), t.adapterVariant || '—', fmt(t.qcImmobRatio, 3), fmt(t.qcActivityRatio, 3), fmt(t.qcKoff, 6), t.qcStatus ? t.qcStatus.toUpperCase() : '—']
     })
   )
+  addPhotos('fm')
 
-  // ── Section 13 ──
-  addSectionHeader(13, 'FINAL DISPOSITION')
-  addSubsection('13.1 Batch Review')
+  // ── Section 12 ──
+  addSectionHeader(12, 'FINAL DISPOSITION')
+  addSubsection('12.1 Batch Review')
   addChecklist(['review_coa', 'review_documentation'])
   addField('Deviations', r.hasDeviations ? `Yes (NCR #${r.deviationNcrNumber})` : 'None')
   y += 2
 
-  addSubsection('13.2 Final Decision')
+  addSubsection('12.2 Final Decision')
   addTable(
     [['Tube', 'Adapter Variant', 'CoA Reference', 'Disposition']],
     tubeNums.map(i => {
@@ -529,7 +572,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
     })
   )
 
-  addSubsection('13.3 Release Authorization')
+  addSubsection('12.3 Release Authorization')
   y += 2
   addTable(
     [['Role', 'Name', 'Date']],
@@ -543,17 +586,16 @@ export function exportConjugationRecordPDF(r: ConjugationRecord) {
   const sectionNames: Record<string, string> = {
     s1: '1. Batch Identity',
     s2: '2. Adapter Specifications',
-    s3: '3. Materials Traceability',
-    s4: '4. Buffer Exchange',
-    s5: '5. Post-Exchange Quantification',
-    s6: '6. Reagent Preparation',
-    s7: '7. Process Execution',
-    s8: '8. AKTA Purification',
-    s9: '9. Final Buffer Exchange',
-    s10: '10. Final Quantification',
-    s11: '11. Aliquoting & Storage',
-    s12: '12. Quality Control',
-    s13: '13. Final Disposition',
+    s3: '3. Buffer Exchange',
+    s4: '4. Post-Exchange Quantification',
+    s5: '5. Reagent Preparation',
+    s6: '6. Process Execution',
+    s7: '7. AKTA Purification',
+    s8: '8. Final Buffer Exchange',
+    s9: '9. Final Quantification',
+    s10: '10. Aliquoting & Storage',
+    s11: '11. Quality Control',
+    s12: '12. Final Disposition',
   }
 
   const comments = Object.entries(r.sectionComments || {})
