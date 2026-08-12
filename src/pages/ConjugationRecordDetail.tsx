@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { doc, collection, query, orderBy, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, ChevronDown, ChevronRight, ClipboardList, Check, X, AlertTriangle, Download, MessageSquare, Plus, Trash2, BookOpen, ImagePlus } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, ClipboardList, Check, X, Download, MessageSquare, Plus, Trash2, BookOpen, ImagePlus, Calculator } from 'lucide-react'
 import { exportConjugationRecordPDF } from '../exportConjugationRecord'
 import { subscribeAttachments, addAttachment, deleteAttachment } from '../recordAttachments'
 import {
@@ -11,12 +11,13 @@ import {
   ATTACHMENT_LABELS,
   CHECKLIST_ITEMS,
   CURRENT_SCHEMA_VERSION,
-  OLIGO_MW_KDA,
+  AKTA_GRADIENT_MODES,
+  AKTA_DEFAULT_PATH_LENGTH_CM,
   calcTotalMassUg,
   calcAmountNmol,
   calcYieldPercent,
   calcDilutionVolume,
-  calcOligoConcentrationUm,
+  calcAktaAuc,
   createDefaultTube,
   getAllVariants,
   calcVariantVolumes,
@@ -25,7 +26,6 @@ import {
   migrateSectionComments,
   type ConjugationRecord,
   type TubeData,
-  type OligoReconstitution,
   type AdapterVariant,
   type CustomAdapterDef,
   type AttachmentKind,
@@ -181,21 +181,6 @@ function PassFail({ value, onChange }: { value: string; onChange: (v: 'pass' | '
   )
 }
 
-function VisualCheck({ value, onChange }: { value: string; onChange: (v: 'clear' | 'turbid' | '') => void }) {
-  return (
-    <div className="flex gap-1">
-      <button type="button" onClick={() => onChange(value === 'clear' ? '' : 'clear')}
-        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-          value === 'clear' ? 'bg-green-100 text-green-700 ring-2 ring-green-300' : 'bg-slate-100 text-slate-500'
-        }`}>Clear</button>
-      <button type="button" onClick={() => onChange(value === 'turbid' ? '' : 'turbid')}
-        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-          value === 'turbid' ? 'bg-amber-100 text-amber-700 ring-2 ring-amber-300' : 'bg-slate-100 text-slate-500'
-        }`}>Turbid</button>
-    </div>
-  )
-}
-
 // ── ε Library ────────────────────────────────────────────────────────
 
 // Shared shape of the `epsilonLibrary` collection (see EpsilonLibrary page).
@@ -312,10 +297,13 @@ export default function ConjugationRecordDetail() {
     const unsub = onSnapshot(ref, (snap) => {
       if (!snap.exists()) { navigate('/records'); return }
       const d = snap.data()
-      // Records created before section 3 was removed still use the old
-      // s1…s13 comment keys — shift them once and persist.
-      const needsMigration = (d.schemaVersion ?? 1) < CURRENT_SCHEMA_VERSION
-      const sectionComments = needsMigration ? migrateSectionComments(d.sectionComments) : (d.sectionComments || {})
+      // Sections have been removed over time, so older records still use the
+      // comment keys of their original layout — shift them once and persist.
+      const storedVersion = d.schemaVersion ?? 1
+      const needsMigration = storedVersion < CURRENT_SCHEMA_VERSION
+      const sectionComments = needsMigration
+        ? migrateSectionComments(d.sectionComments, storedVersion)
+        : (d.sectionComments || {})
       if (needsMigration) {
         updateDoc(ref, { sectionComments, schemaVersion: CURRENT_SCHEMA_VERSION }).catch(err =>
           console.error('Migration error:', err)
@@ -446,22 +434,6 @@ export default function ConjugationRecordDetail() {
     setEpsTarget(null)
   }
 
-  // Update oligo reconstitution
-  function updateOligo(index: number, field: keyof OligoReconstitution, value: string | number | null) {
-    if (!record) return
-    const oligoReconstitutions = [...record.oligoReconstitutions]
-    oligoReconstitutions[index] = { ...oligoReconstitutions[index], [field]: value }
-    setRecord({ ...record, oligoReconstitutions })
-    save({ oligoReconstitutions })
-  }
-
-  function addOligo() {
-    if (!record) return
-    const oligoReconstitutions = [...record.oligoReconstitutions, { oligoId: '', tubeCount: null, measuredNgUl: null }]
-    setRecord({ ...record, oligoReconstitutions })
-    save({ oligoReconstitutions })
-  }
-
   // Change tube count (grow or shrink the tubes array)
   function changeTubeCount(n: number) {
     if (!record) return
@@ -500,15 +472,6 @@ export default function ConjugationRecordDetail() {
     const customAdapters = (record.customAdapters || []).filter((_, i) => i !== index)
     setRecord({ ...record, customAdapters })
     save({ customAdapters })
-  }
-
-  // Update acceptance criteria
-  function updateAcceptance(variant: string, field: string, value: number | null) {
-    if (!record) return
-    const acceptanceCriteria = { ...record.acceptanceCriteria }
-    acceptanceCriteria[variant] = { ...acceptanceCriteria[variant], [field]: value }
-    setRecord({ ...record, acceptanceCriteria })
-    save({ acceptanceCriteria })
   }
 
   if (loading) {
@@ -781,66 +744,22 @@ export default function ConjugationRecordDetail() {
               </table>
             </div>
 
-            {/* 2.3 Acceptance Criteria */}
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">2.3 Acceptance Criteria</h3>
-            {getAllVariants(r).map(v => {
-              const ac = r.acceptanceCriteria?.[v.name] || { minYield: null, activity: null, koff: null }
-              return (
-                <div key={v.name} className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-medium text-slate-600 w-28 shrink-0 truncate">{v.name}</span>
-                  <NumInput label="" value={ac.minYield} onChange={val => updateAcceptance(v.name, 'minYield', val)} placeholder="Min %" unit="% yield" />
-                  <NumInput label="" value={ac.activity} onChange={val => updateAcceptance(v.name, 'activity', val)} placeholder="Activity" unit="%" />
-                  <NumInput label="" value={ac.koff} onChange={val => updateAcceptance(v.name, 'koff', val)} placeholder="k_off" unit="s⁻¹" />
-                </div>
-              )
-            })}
           </div>
         </Section>
 
         {/* ── Section 3: Buffer Exchange ── */}
         <Section num={3} title="Buffer Exchange" comment={r.sectionComments?.['s3']} onCommentChange={v => updateComment('s3', v)}>
           <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">3.1 Protein Input Parameters</h3>
-            {tubeNums.map(i => {
-              const t = r.tubes[i]
-              const inputMass = t.inputConc !== null && t.inputVolume !== null ? t.inputConc * t.inputVolume : null
-              const inRange = inputMass !== null ? inputMass >= 0.9 && inputMass <= 1.1 : null
-              return (
-                <div key={i} className="flex items-center gap-2 mb-2">
-                  <span className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-bold text-sm shrink-0">{i + 1}</span>
-                  <NumInput value={t.inputConc} onChange={v => updateTube(i, 'inputConc', v)} placeholder="Conc" unit="mg/mL" className="flex-1" />
-                  <NumInput value={t.inputVolume} onChange={v => updateTube(i, 'inputVolume', v)} placeholder="Vol" unit="mL" className="flex-1" />
-                  <CalcField label="" value={inputMass !== null ? `${inputMass.toFixed(2)} mg` : '—'} />
-                  {inRange !== null && (
-                    inRange
-                      ? <Check className="w-4 h-4 text-green-500" />
-                      : <AlertTriangle className="w-4 h-4 text-amber-500" />
-                  )}
-                </div>
-              )
-            })}
-
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">3.2 Procedure</h3>
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 mb-2">
-              <p className="text-xs text-amber-700 font-medium">⚠ Align all filters with Membrane Panel facing OUTWARDS</p>
-            </div>
-            {['bufex_prewash', 'bufex_load', 'bufex_wash1', 'bufex_wash2', 'bufex_wash3', 'bufex_recovery'].map(key => (
-              <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
-            ))}
-
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">3.3 Recovery Parameters</h3>
-            {tubeNums.map(i => (
-              <div key={i} className="flex items-center gap-2 mb-2">
-                <span className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-bold text-sm shrink-0">{i + 1}</span>
-                <NumInput value={r.tubes[i].recoveredVolume} onChange={v => updateTube(i, 'recoveredVolume', v)} placeholder="Vol" unit="µL" className="flex-1" />
-                <VisualCheck value={r.tubes[i].recoveryVisualCheck} onChange={v => updateTube(i, 'recoveryVisualCheck', v)} />
-              </div>
-            ))}
+            <CheckItem
+              label="Buffer exchange performed"
+              checked={r.bufferExchangeDone || false}
+              onChange={v => updateField('bufferExchangeDone', v)}
+            />
           </div>
         </Section>
 
-        {/* ── Section 4: Post-Exchange Quantification ── */}
-        <Section num={4} title="Post-Exchange Quantification" comment={r.sectionComments?.['s4']} onCommentChange={v => updateComment('s4', v)}>
+        {/* ── Section 4: Input Quantification ── */}
+        <Section num={4} title="Input Quantification" comment={r.sectionComments?.['s4']} onCommentChange={v => updateComment('s4', v)}>
           <div className="mt-3">
             <h3 className="text-sm font-semibold text-slate-700 mb-2">4.1 Measurements</h3>
             <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. Enter <b>A₂₈₀</b> (3 readings, concentration derived via variant ε and MW) or switch to <b>Manual</b> to enter the concentration directly in µM.</p>
@@ -853,7 +772,7 @@ export default function ConjugationRecordDetail() {
               const inputUnit = isA280 ? 'A₂₈₀' : 'mg/mL'
               const inputLabelPrefix = isA280 ? 'A' : 'M'
               const medianConc = getPostExMedianMgPerMl(t, variant)
-              const vol = t.postExVolume ?? t.recoveredVolume
+              const vol = t.postExVolume
               const totalMass = calcTotalMassUg(medianConc, vol)
               const amount = variant ? calcAmountNmol(totalMass, variant.mwProtein) : null
               const concUm = amount !== null && vol !== null && vol > 0 ? (amount / vol) * 1000 : null
@@ -933,7 +852,7 @@ export default function ConjugationRecordDetail() {
                     const t = r.tubes[i]
                     const variant = getVariant(t.adapterVariant, r)
                     const medianConc = getPostExMedianMgPerMl(t, variant)
-                    const vol = t.postExVolume ?? t.recoveredVolume
+                    const vol = t.postExVolume
                     const totalMass = calcTotalMassUg(medianConc, vol)
                     const inputMassMg = totalMass !== null ? totalMass / 1000 : null
                     const vols = variant && inputMassMg !== null
@@ -957,49 +876,16 @@ export default function ConjugationRecordDetail() {
           </div>
         </Section>
 
-        {/* ── Section 5: Reagent Preparation ── */}
-        <Section num={5} title="Reagent Preparation" comment={r.sectionComments?.['s5']} onCommentChange={v => updateComment('s5', v)}>
+        {/* ── Section 5: Process Execution ── */}
+        <Section num={5} title="Process Execution" comment={r.sectionComments?.['s5']} onCommentChange={v => updateComment('s5', v)}>
           <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">5.1 Oligo Reconstitution</h3>
-            <p className="text-xs text-slate-500 mb-2">Add 100 µL PBS-T per lyophilised tube. QC: NanoDrop, ssDNA mode, Blank PBS-T.</p>
-            {(r.oligoReconstitutions || []).map((oligo, i) => {
-              const calcUm = calcOligoConcentrationUm(oligo.measuredNgUl, OLIGO_MW_KDA)
-              const ok = calcUm !== null ? calcUm >= 95 : null
-              return (
-                <div key={i} className="flex items-center gap-2 mb-2">
-                  <TextInput value={oligo.oligoId} onChange={v => updateOligo(i, 'oligoId', v)} placeholder="Oligo ID" className="w-24" />
-                  <NumInput value={oligo.tubeCount} onChange={v => updateOligo(i, 'tubeCount', v)} placeholder="# Tubes" className="w-20" />
-                  <NumInput value={oligo.measuredNgUl} onChange={v => updateOligo(i, 'measuredNgUl', v)} placeholder="ng/µL" unit="ng/µL" className="flex-1" />
-                  <CalcField label="" value={calcUm} unit="µM" />
-                  {ok !== null && (ok
-                    ? <Check className="w-4 h-4 text-green-500" />
-                    : <X className="w-4 h-4 text-red-500" />
-                  )}
-                </div>
-              )
-            })}
-            <button onClick={addOligo} className="text-xs text-primary font-medium hover:underline mt-1">+ Add Oligo</button>
-
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">5.2 Linker Working Solution</h3>
-            {['linker_dilution', 'linker_mixing'].map(key => (
-              <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
-            ))}
-            <div className="bg-red-50 border border-red-200 rounded-lg p-2 mt-2">
-              <p className="text-xs text-red-700 font-medium">🔴 CRITICAL: Proceed to 6.1 Protein Activation immediately (within 2 min)</p>
-            </div>
-          </div>
-        </Section>
-
-        {/* ── Section 6: Process Execution ── */}
-        <Section num={6} title="Process Execution" comment={r.sectionComments?.['s6']} onCommentChange={v => updateComment('s6', v)}>
-          <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">6.1 Protein Activation</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">5.1 Protein Activation</h3>
             <TextInput label="Start Time" value={r.activationStartTime} onChange={v => updateField('activationStartTime', v)} placeholder="HH:MM" className="mb-2 w-32" />
             {['activation_addition', 'activation_mixing', 'activation_incubation'].map(key => (
               <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
             ))}
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">6.2 Oligo Conjugation</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">5.2 Oligo Conjugation</h3>
             <TextInput label="Start Time" value={r.conjugationStartTime} onChange={v => updateField('conjugationStartTime', v)} placeholder="HH:MM" className="mb-2 w-32" />
             {['conjugation_addition', 'conjugation_mixing', 'conjugation_incubation'].map(key => (
               <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
@@ -1008,10 +894,10 @@ export default function ConjugationRecordDetail() {
           </div>
         </Section>
 
-        {/* ── Section 7: AKTA Purification ── */}
-        <Section num={7} title="AKTA Purification" comment={r.sectionComments?.['s7']} onCommentChange={v => updateComment('s7', v)}>
+        {/* ── Section 6: AKTA Purification ── */}
+        <Section num={6} title="AKTA Purification" comment={r.sectionComments?.['s6']} onCommentChange={v => updateComment('s6', v)}>
           <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">7.1 System Setup & Verification</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">6.1 System Setup & Verification</h3>
             {['akta_column', 'akta_buffer_inspect', 'akta_degas', 'akta_wash'].map(key => (
               <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
             ))}
@@ -1020,58 +906,122 @@ export default function ConjugationRecordDetail() {
               <TextInput label="Method Name" value={r.aktaMethodName} onChange={v => updateField('aktaMethodName', v)} />
             </div>
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">7.2 Purification Runs</h3>
-            {tubeNums.map(i => (
-              <div key={i} className="bg-slate-50 rounded-xl p-3 mb-2">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-bold text-sm">{i + 1}</span>
-                  <span className="text-sm font-medium text-slate-700">{r.tubes[i].adapterVariant || `Tube ${i + 1}`}</span>
-                  <CheckItem label="Top-up" checked={r.tubes[i].aktaTopUp} onChange={v => updateTube(i, 'aktaTopUp', v)} />
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">6.2 Purification Runs</h3>
+            {tubeNums.map(i => {
+              const t = r.tubes[i]
+              const variant = getVariant(t.adapterVariant, r)
+              const auc = calcAktaAuc(
+                t.aktaAuc ?? null,
+                variant?.e280Adapter ?? null,
+                t.aktaAucPathLength ?? AKTA_DEFAULT_PATH_LENGTH_CM,
+                variant?.mwAdapter ?? null,
+                t.aktaCollectedVolume
+              )
+              return (
+                <div key={i} className="bg-slate-50 rounded-xl p-3 mb-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-bold text-sm">{i + 1}</span>
+                    <span className="text-sm font-medium text-slate-700">{t.adapterVariant || `Tube ${i + 1}`}</span>
+                    <CheckItem label="Top-up" checked={t.aktaTopUp} onChange={v => updateTube(i, 'aktaTopUp', v)} />
+                  </div>
+
+                  {/* Gradient mode */}
+                  <label className="text-xs text-slate-500 font-medium block mb-1">Gradient Mode</label>
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {AKTA_GRADIENT_MODES.map(m => (
+                      <button
+                        key={m.value}
+                        type="button"
+                        onClick={() => updateTube(i, 'aktaGradientMode', t.aktaGradientMode === m.value ? '' : m.value)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                          t.aktaGradientMode === m.value
+                            ? 'bg-primary text-white'
+                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                  {t.aktaGradientMode === 'custom' && (
+                    <textarea
+                      value={t.aktaGradientNotes || ''}
+                      onChange={e => updateTube(i, 'aktaGradientNotes', e.target.value)}
+                      placeholder="Describe the custom gradient (buffer B %, slope, column volumes, flow rate…)"
+                      rows={3}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-light focus:border-transparent"
+                    />
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <TextInput label="Run Time" value={t.aktaRunTime} onChange={v => updateTube(i, 'aktaRunTime', v)} />
+                    <TextInput label="Result File" value={t.aktaResultFile} onChange={v => updateTube(i, 'aktaResultFile', v)} />
+                  </div>
+                  <div className="mt-2">
+                    <TextInput
+                      label="Collected Fractions"
+                      value={t.aktaFractionsCollected}
+                      onChange={v => updateTube(i, 'aktaFractionsCollected', v)}
+                      placeholder="e.g. A4–A7, B1"
+                    />
+                  </div>
+
+                  {/* AUC calculator */}
+                  <div className="mt-3 bg-white border border-slate-200 rounded-lg p-2.5">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Calculator className="w-3.5 h-3.5 text-primary" />
+                      <span className="text-xs font-semibold text-slate-700">AUC Calculator</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <NumInput label="AUC" value={t.aktaAuc ?? null} onChange={v => updateTube(i, 'aktaAuc', v)} unit="mAU·mL" />
+                      <NumInput label="Path" value={t.aktaAucPathLength ?? AKTA_DEFAULT_PATH_LENGTH_CM} onChange={v => updateTube(i, 'aktaAucPathLength', v)} unit="cm" />
+                      <NumInput label="Collected Vol" value={t.aktaCollectedVolume} onChange={v => updateTube(i, 'aktaCollectedVolume', v)} unit="µL" />
+                    </div>
+                    {!variant ? (
+                      <p className="text-[10px] text-amber-600 mt-2">Select an adapter variant to use ε₂₈₀ and MW of the conjugate.</p>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-3 gap-2 mt-2">
+                          <CalcField label="Amount" value={auc.amountNmol} unit="nmol" />
+                          <CalcField label="Mass" value={auc.massUg} unit="µg" />
+                          <CalcField label="Conc" value={auc.concUm} unit="µM" />
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1.5">
+                          n = AUC / (ε<sub>Adapter</sub> × l × 10⁶) &nbsp;·&nbsp; ε = {variant.e280Adapter.toLocaleString()} M⁻¹cm⁻¹, MW = {variant.mwAdapter} kDa
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  <TubePhotos
+                    kind="akta"
+                    tubeIndex={i}
+                    photos={photosFor('akta', i)}
+                    onAdd={addPhoto}
+                    onDelete={removePhoto}
+                    onView={setLightbox}
+                  />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <TextInput label="Run Time" value={r.tubes[i].aktaRunTime} onChange={v => updateTube(i, 'aktaRunTime', v)} />
-                  <TextInput label="Result File" value={r.tubes[i].aktaResultFile} onChange={v => updateTube(i, 'aktaResultFile', v)} />
-                  <TextInput label="Fractions" value={r.tubes[i].aktaFractionsCollected} onChange={v => updateTube(i, 'aktaFractionsCollected', v)} />
-                  <NumInput label="Collected Vol" value={r.tubes[i].aktaCollectedVolume} onChange={v => updateTube(i, 'aktaCollectedVolume', v)} unit="µL" />
-                </div>
-                <TubePhotos
-                  kind="akta"
-                  tubeIndex={i}
-                  photos={photosFor('akta', i)}
-                  onAdd={addPhoto}
-                  onDelete={removePhoto}
-                  onView={setLightbox}
-                />
-              </div>
-            ))}
+              )
+            })}
           </div>
         </Section>
 
-        {/* ── Section 8: Final Buffer Exchange ── */}
-        <Section num={8} title="Final Buffer Exchange" comment={r.sectionComments?.['s8']} onCommentChange={v => updateComment('s8', v)}>
+        {/* ── Section 7: Final Buffer Exchange ── */}
+        <Section num={7} title="Final Buffer Exchange" comment={r.sectionComments?.['s7']} onCommentChange={v => updateComment('s7', v)}>
           <div className="mt-3">
             <p className="text-xs text-slate-500 mb-2">Filter: 10K Amicon, 2.0 mL format. Centrifugation: 7k rcf.</p>
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">8.1 Procedure</h3>
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 mb-2">
               <p className="text-xs text-amber-700 font-medium">⚠ Align 2.0 mL filters with Membrane Panel facing OUTWARDS</p>
             </div>
             {['finbufex_prewash', 'finbufex_load', 'finbufex_wash1', 'finbufex_wash2', 'finbufex_recovery'].map(key => (
               <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
             ))}
-
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">8.2 Recovery Parameters</h3>
-            {tubeNums.map(i => (
-              <div key={i} className="flex items-center gap-2 mb-2">
-                <span className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-bold text-sm shrink-0">{i + 1}</span>
-                <NumInput value={r.tubes[i].finalRecoveredVolume} onChange={v => updateTube(i, 'finalRecoveredVolume', v)} placeholder="Vol" unit="µL" className="flex-1" />
-                <VisualCheck value={r.tubes[i].finalVisualCheck} onChange={v => updateTube(i, 'finalVisualCheck', v)} />
-              </div>
-            ))}
           </div>
         </Section>
 
-        {/* ── Section 9: Final Quantification ── */}
-        <Section num={9} title="Final Quantification" comment={r.sectionComments?.['s9']} onCommentChange={v => updateComment('s9', v)}>
+        {/* ── Section 8: Final Quantification ── */}
+        <Section num={8} title="Final Quantification" comment={r.sectionComments?.['s8']} onCommentChange={v => updateComment('s8', v)}>
           <div className="mt-3">
             <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. Use ε₂₈₀ Adapter (not Protein). Switch input to A₂₈₀ when only absorbance is recorded — concentration is derived using the variant's ε_Adapter and MW_Adapter.</p>
             {tubeNums.map(i => {
@@ -1082,7 +1032,7 @@ export default function ConjugationRecordDetail() {
               const inputUnit = isA280 ? 'A₂₈₀' : 'mg/mL'
               const inputLabelPrefix = isA280 ? 'A' : 'M'
               const medianConc = getFinalMedianMgPerMl(t, variant)
-              const vol = t.finalVolume ?? t.finalRecoveredVolume
+              const vol = t.finalVolume
               const totalMass = calcTotalMassUg(medianConc, vol)
               const amount = variant ? calcAmountNmol(totalMass, variant.mwAdapter) : null
               const concUm = amount !== null && vol !== null && vol > 0 ? (amount / vol) * 1000 : null
@@ -1126,15 +1076,15 @@ export default function ConjugationRecordDetail() {
           </div>
         </Section>
 
-        {/* ── Section 10: Aliquoting & Storage ── */}
-        <Section num={10} title="Aliquoting & Storage" comment={r.sectionComments?.['s10']} onCommentChange={v => updateComment('s10', v)}>
+        {/* ── Section 9: Aliquoting & Storage ── */}
+        <Section num={9} title="Aliquoting & Storage" comment={r.sectionComments?.['s9']} onCommentChange={v => updateComment('s9', v)}>
           <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">10.1 Dilution to 2.6 µM</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">9.1 Dilution to 2.6 µM</h3>
             {tubeNums.map(i => {
               const t = r.tubes[i]
               const variant = getVariant(t.adapterVariant, r)
               const medianConc = getFinalMedianMgPerMl(t, variant)
-              const vol = t.finalVolume ?? t.finalRecoveredVolume
+              const vol = t.finalVolume
               const totalMass = calcTotalMassUg(medianConc, vol)
               const amount = variant ? calcAmountNmol(totalMass, variant.mwAdapter) : null
               const concUm = amount !== null && vol !== null && vol > 0 ? (amount / vol) * 1000 : null
@@ -1164,7 +1114,7 @@ export default function ConjugationRecordDetail() {
               </div>
             ))}
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">10.4 Storage</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">9.4 Storage</h3>
             <CheckItem label={CHECKLIST_ITEMS['aliquot_storage']} checked={r.checklists?.['aliquot_storage'] || false} onChange={v => updateChecklist('aliquot_storage', v)} />
             <div className="grid grid-cols-2 gap-2 mt-2">
               <TextInput label="Storage Location" value={r.storageLocation} onChange={v => updateField('storageLocation', v)} placeholder="-20°C Freezer, Location..." />
@@ -1173,25 +1123,24 @@ export default function ConjugationRecordDetail() {
           </div>
         </Section>
 
-        {/* ── Section 11: Quality Control ── */}
-        <Section num={11} title="Quality Control" comment={r.sectionComments?.['s11']} onCommentChange={v => updateComment('s11', v)}>
+        {/* ── Section 10: Quality Control ── */}
+        <Section num={10} title="Quality Control" comment={r.sectionComments?.['s10']} onCommentChange={v => updateComment('s10', v)}>
           <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">11.1 Yield Assessment</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">10.1 Yield Assessment</h3>
             {tubeNums.map(i => {
               const t = r.tubes[i]
               const variant = getVariant(t.adapterVariant, r)
-              // Start amount from Section 5
+              // Start amount from Section 4
               const postMedian = getPostExMedianMgPerMl(t, variant)
-              const postVol = t.postExVolume ?? t.recoveredVolume
+              const postVol = t.postExVolume
               const postMass = calcTotalMassUg(postMedian, postVol)
               const startAmount = variant ? calcAmountNmol(postMass, variant.mwProtein) : null
-              // Final amount from Section 10
+              // Final amount from Section 8
               const finalMedian = getFinalMedianMgPerMl(t, variant)
-              const finalVol = t.finalVolume ?? t.finalRecoveredVolume
+              const finalVol = t.finalVolume
               const finalMass = calcTotalMassUg(finalMedian, finalVol)
               const finalAmount = variant ? calcAmountNmol(finalMass, variant.mwAdapter) : null
               const yieldPct = calcYieldPercent(startAmount, finalAmount)
-              const spec = r.acceptanceCriteria?.[t.adapterVariant]?.minYield
               return (
                 <div key={i} className="flex items-center gap-2 mb-2">
                   <span className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-bold text-sm shrink-0">{i + 1}</span>
@@ -1200,13 +1149,12 @@ export default function ConjugationRecordDetail() {
                   <span className="text-xs text-slate-400">→</span>
                   <CalcField label="" value={finalAmount} unit="nmol" />
                   <CalcField label="" value={yieldPct !== null ? `${yieldPct.toFixed(1)}%` : '—'} />
-                  {spec && <span className="text-xs text-slate-400">≥ {spec}%</span>}
                   <PassFail value={t.yieldStatus} onChange={v => updateTube(i, 'yieldStatus', v)} />
                 </div>
               )
             })}
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">11.2 Purity & Identity (SDS-PAGE)</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">10.2 Purity & Identity (SDS-PAGE)</h3>
             <div className="grid grid-cols-2 gap-2 mb-3">
               <TextInput label="Experiment Ref" value={r.sdsExperimentRef} onChange={v => updateField('sdsExperimentRef', v)} />
               <TextInput label="Load Amount" value={r.sdsLoadAmount} onChange={v => updateField('sdsLoadAmount', v)} placeholder="µg per lane" />
@@ -1232,7 +1180,7 @@ export default function ConjugationRecordDetail() {
               )
             })}
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">11.3 Functional QC (Focal Molography)</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">10.3 Functional QC (Focal Molography)</h3>
             <TextInput label="Experiment Ref" value={r.qcExperimentRef} onChange={v => updateField('qcExperimentRef', v)} className="mb-3" />
             {tubeNums.map(i => {
               const t = r.tubes[i]
@@ -1262,10 +1210,10 @@ export default function ConjugationRecordDetail() {
           </div>
         </Section>
 
-        {/* ── Section 12: Final Disposition ── */}
-        <Section num={12} title="Final Disposition" comment={r.sectionComments?.['s12']} onCommentChange={v => updateComment('s12', v)}>
+        {/* ── Section 11: Final Disposition ── */}
+        <Section num={11} title="Final Disposition" comment={r.sectionComments?.['s11']} onCommentChange={v => updateComment('s11', v)}>
           <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">12.1 Batch Review</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">11.1 Batch Review</h3>
             {['review_coa', 'review_documentation'].map(key => (
               <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
             ))}
@@ -1284,7 +1232,7 @@ export default function ConjugationRecordDetail() {
               )}
             </div>
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">12.2 Final Decision</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">11.2 Final Decision</h3>
             {tubeNums.map(i => {
               const t = r.tubes[i]
               return (
@@ -1312,7 +1260,7 @@ export default function ConjugationRecordDetail() {
               )
             })}
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">12.3 Release Authorization</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">11.3 Release Authorization</h3>
             <div className="grid grid-cols-2 gap-2">
               <TextInput label="Operator Name" value={r.releaseOperatorName} onChange={v => updateField('releaseOperatorName', v)} />
               <TextInput label="Operator Date" value={r.releaseOperatorDate} onChange={v => updateField('releaseOperatorDate', v)} placeholder="YYYY-MM-DD" />

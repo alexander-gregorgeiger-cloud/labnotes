@@ -5,7 +5,7 @@ import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
 import { Plus, ClipboardList, Trash2, FolderOpen, ArrowLeft } from 'lucide-react'
 import type { ConjugationRecordMeta } from '../db'
-import { ADAPTER_VARIANTS, createDefaultTube, CHECKLIST_ITEMS, CURRENT_SCHEMA_VERSION } from '../conjugationRecord'
+import { createDefaultTube, CHECKLIST_ITEMS, CURRENT_SCHEMA_VERSION } from '../conjugationRecord'
 import { deleteAllAttachments } from '../recordAttachments'
 
 export default function ConjugationRecordList() {
@@ -56,10 +56,6 @@ export default function ConjugationRecordList() {
       for (const key of Object.keys(CHECKLIST_ITEMS)) {
         checklists[key] = false
       }
-      const acceptanceCriteria: Record<string, { minYield: number | null; activity: number | null; koff: number | null }> = {}
-      for (const v of ADAPTER_VARIANTS) {
-        acceptanceCriteria[v.name] = { minYield: null, activity: null, koff: null }
-      }
       const docRef = await addDoc(collection(firestore, 'users', user.uid, 'conjugationRecords'), {
         name: name.trim(),
         customAdapters: [],
@@ -69,8 +65,7 @@ export default function ConjugationRecordList() {
         dateStarted: '',
         dateFinished: '',
         preparedBy: '',
-        acceptanceCriteria,
-        oligoReconstitutions: [],
+        bufferExchangeDone: false,
         activationStartTime: '',
         conjugationStartTime: '',
         conjugationEndTime: '',
