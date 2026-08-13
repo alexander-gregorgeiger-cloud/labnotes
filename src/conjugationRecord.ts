@@ -1,5 +1,5 @@
 // Conjugation Record types and constants
-// Based on AP-REC-01 - FM ADAPTERS - Adapter Conjugation Record v1.0
+// Based on REC-01 - FM ADAPTERS - Adapter Conjugation Record v1.0
 
 // ── Adapter Library (fixed) ──────────────────────────────────────────
 

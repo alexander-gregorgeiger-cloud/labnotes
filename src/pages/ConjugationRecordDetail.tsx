@@ -562,7 +562,7 @@ export default function ConjugationRecordDetail() {
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-bold text-slate-900 truncate">{r.name}</h1>
           <p className="text-xs text-slate-400">
-            AP-REC-01 · {r.tubeCount} tube{r.tubeCount !== 1 ? 's' : ''}
+            REC-01 · {r.tubeCount} tube{r.tubeCount !== 1 ? 's' : ''}
             {saving && ' · Saving...'}
           </p>
         </div>

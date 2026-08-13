@@ -255,8 +255,8 @@ export function exportConjugationRecordPDF(r: ConjugationRecord, attachments: Re
   y -= 2
   addSubtitle('AMINE-REACTIVE CHEMISTRY')
   y += 2
-  addFieldPair('Document ID', 'AP-REC-01', 'Version', '1.0')
-  addFieldPair('SOP Reference', 'AP-DOC-01', 'Batch', r.name)
+  addFieldPair('Document ID', 'REC-01', 'Version', '1.0')
+  addFieldPair('SOP Reference', 'DOC-01', 'Batch', r.name)
   y += 2
   pdf.setDrawColor(PRIMARY)
   pdf.setLineWidth(0.5)
@@ -601,12 +601,12 @@ export function exportConjugationRecordPDF(r: ConjugationRecord, attachments: Re
     const pageH = pdf.internal.pageSize.getHeight()
     pdf.setFontSize(7)
     pdf.setTextColor(LIGHT_GRAY)
-    pdf.text(`Lino Biotech · Focal Molography · AP-REC-01 v1.0`, margin, pageH - 8)
+    pdf.text(`Lino Biotech · Focal Molography · REC-01 v1.0`, margin, pageH - 8)
     pdf.text(`${r.name} · Generated from LabNotes`, margin, pageH - 5)
     pdf.text(`Page ${p} of ${pageCount}`, pageWidth - margin, pageH - 5, { align: 'right' })
   }
 
   // Save
-  const filename = `${r.name.replace(/[^a-zA-Z0-9]/g, '_')}_AP-REC-01.pdf`
+  const filename = `${r.name.replace(/[^a-zA-Z0-9]/g, '_')}_REC-01.pdf`
   pdf.save(filename)
 }
