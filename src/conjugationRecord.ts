@@ -116,9 +116,7 @@ export interface TubeData {
   // Peak integral from the ÄKTA UV trace, used by the inline AUC calculator
   aktaAuc: number | null             // mAU·mL
   aktaAucPathLength: number | null   // cm (ÄKTA flow cell, typically 0.2)
-  // Section 8 - Final Quantification (3x NanoDrop)
-  // Input mode: 'conc' → M1..M3 stored as mg/mL; 'a280' → stored as A₂₈₀ units (uses ε/MW of the Adapter conjugate)
-  finalInputMode?: 'conc' | 'a280'
+  // Section 8 - Final Quantification (3x NanoDrop, A₂₈₀ — uses ε/MW of the Adapter conjugate)
   finalM1: number | null
   finalM2: number | null
   finalM3: number | null
@@ -129,15 +127,14 @@ export interface TubeData {
   aliquotLabelsVerified: boolean
   // Section 11.1 - Yield
   yieldStatus: 'pass' | 'fail' | ''
-  // Section 11.2 - SDS-PAGE
-  sdsMwShift: boolean | null
-  sdsFreeProteinUnder10: boolean | null
-  sdsPurityStatus: 'pass' | 'fail' | ''
-  // Section 11.3 - Functional QC
+  // Section 10.2 - Functional QC (Focal Molography)
   qcImmobRatio: number | null
   qcActivityRatio: number | null
   qcKoff: number | null
   qcStatus: 'pass' | 'fail' | ''
+  // Section 10.2 - Optional identity test by binding (Focal Molography)
+  identityBinder: string                    // e.g. Cetuximab, TNFα
+  identityStatus: 'pass' | 'fail' | ''
   // Section 12 - Final Disposition
   coaReference: string
   disposition: 'release' | 'reject' | 'quarantine' | ''
@@ -175,12 +172,7 @@ export interface ConjugationRecord {
   conjugationEndTime: string
   // Section 7 - Final Buffer Exchange (how many times the sample was concentrated)
   finalBufferExchangeCycles: number | null
-  // Section 10.2 - SDS-PAGE shared
-  sdsExperimentRef: string
-  sdsLoadAmount: string
-  sdsStainStart: string
-  sdsStainEnd: string
-  // Section 10.3 - Functional QC shared
+  // Section 10.2 - Functional QC shared
   qcExperimentRef: string
   // Section 11 - Deviations
   hasDeviations: boolean
@@ -236,7 +228,6 @@ export function createDefaultTube(): TubeData {
     aktaCollectedVolume: null,
     aktaAuc: null,
     aktaAucPathLength: AKTA_DEFAULT_PATH_LENGTH_CM,
-    finalInputMode: 'conc',
     finalM1: null,
     finalM2: null,
     finalM3: null,
@@ -245,13 +236,12 @@ export function createDefaultTube(): TubeData {
     aliquotLotNumber: '',
     aliquotLabelsVerified: false,
     yieldStatus: '',
-    sdsMwShift: null,
-    sdsFreeProteinUnder10: null,
-    sdsPurityStatus: '',
     qcImmobRatio: null,
     qcActivityRatio: null,
     qcKoff: null,
     qcStatus: '',
+    identityBinder: '',
+    identityStatus: '',
     coaReference: '',
     disposition: '',
   }
@@ -469,15 +459,13 @@ export function getPostExMedianMgPerMl(
 }
 
 /**
- * Return the median final-quantification concentration in mg/mL,
- * accounting for whether the tube's measurements were entered as
- * concentration or as A₂₈₀. Conversion uses the conjugate (adapter)
- * extinction coefficient and MW, since after AKTA the species in the
- * tube is the protein–oligo conjugate.
+ * Return the median final-quantification concentration in mg/mL from the
+ * three A₂₈₀ readings. Conversion uses the conjugate (adapter) extinction
+ * coefficient and MW, since after AKTA the species in the tube is the
+ * protein–oligo conjugate.
  */
 export function getFinalMedianMgPerMl(
   tube: {
-    finalInputMode?: 'conc' | 'a280'
     finalM1: number | null
     finalM2: number | null
     finalM3: number | null
@@ -485,12 +473,8 @@ export function getFinalMedianMgPerMl(
   variant?: { mwAdapter: number; e280Adapter: number } | null
 ): number | null {
   const med = median3(tube.finalM1, tube.finalM2, tube.finalM3)
-  if (med === null) return null
-  if (tube.finalInputMode === 'a280') {
-    if (!variant) return null
-    return a280ToMgPerMl(med, variant.mwAdapter, variant.e280Adapter)
-  }
-  return med
+  if (med === null || !variant) return null
+  return a280ToMgPerMl(med, variant.mwAdapter, variant.e280Adapter)
 }
 
 /**

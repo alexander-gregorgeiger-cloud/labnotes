@@ -1038,52 +1038,35 @@ export default function ConjugationRecordDetail() {
         {/* ── Section 8: Final Quantification ── */}
         <Section num={8} title="Final Quantification" comment={r.sectionComments?.['s8']} onCommentChange={v => updateComment('s8', v)}>
           <div className="mt-3">
-            <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. Use ε₂₈₀ Adapter (not Protein). Switch input to A₂₈₀ when only absorbance is recorded — concentration is derived using the variant's ε_Adapter and MW_Adapter.</p>
+            <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. Enter three A₂₈₀ readings — concentration is derived using the variant's ε₂₈₀ Adapter and MW Adapter (not the Protein values).</p>
             {tubeNums.map(i => {
               const t = r.tubes[i]
               const variant = getVariant(t.adapterVariant, r)
-              const mode = t.finalInputMode ?? 'conc'
-              const isA280 = mode === 'a280'
-              const inputUnit = isA280 ? 'A₂₈₀' : 'mg/mL'
-              const inputLabelPrefix = isA280 ? 'A' : 'M'
               const medianConc = getFinalMedianMgPerMl(t, variant)
               const vol = t.finalVolume
               const totalMass = calcTotalMassUg(medianConc, vol)
               const amount = variant ? calcAmountNmol(totalMass, variant.mwAdapter) : null
-              const concUm = amount !== null && vol !== null && vol > 0 ? (amount / vol) * 1000 : null
-              const needsVariantForA280 = isA280 && !variant
+              const concUm = calcMolarityUm(medianConc, variant?.mwAdapter ?? null)
               return (
                 <div key={i} className="bg-slate-50 rounded-xl p-3 mb-2">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-bold text-sm">{i + 1}</span>
                     <span className="text-sm font-medium text-slate-700">{t.adapterVariant || `Tube ${i + 1}`}</span>
-                    <div className="ml-2 inline-flex rounded-md border border-slate-200 overflow-hidden text-[10px]">
-                      <button
-                        type="button"
-                        onClick={() => updateTube(i, 'finalInputMode', 'conc')}
-                        className={`px-2 py-0.5 ${!isA280 ? 'bg-primary text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
-                      >mg/mL</button>
-                      <button
-                        type="button"
-                        onClick={() => updateTube(i, 'finalInputMode', 'a280')}
-                        className={`px-2 py-0.5 ${isA280 ? 'bg-primary text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
-                      >A₂₈₀</button>
-                    </div>
                   </div>
-                  {needsVariantForA280 && (
+                  {!variant && (
                     <p className="text-[10px] text-amber-600 mb-1">Select an adapter variant to convert A₂₈₀ → mg/mL.</p>
                   )}
                   <div className="grid grid-cols-3 gap-2 mb-2">
-                    <NumInput label={`${inputLabelPrefix}1`} value={t.finalM1} onChange={v => updateTube(i, 'finalM1', v)} unit={inputUnit} />
-                    <NumInput label={`${inputLabelPrefix}2`} value={t.finalM2} onChange={v => updateTube(i, 'finalM2', v)} unit={inputUnit} />
-                    <NumInput label={`${inputLabelPrefix}3`} value={t.finalM3} onChange={v => updateTube(i, 'finalM3', v)} unit={inputUnit} />
+                    <NumInput label="A1" value={t.finalM1} onChange={v => updateTube(i, 'finalM1', v)} unit="A₂₈₀" />
+                    <NumInput label="A2" value={t.finalM2} onChange={v => updateTube(i, 'finalM2', v)} unit="A₂₈₀" />
+                    <NumInput label="A3" value={t.finalM3} onChange={v => updateTube(i, 'finalM3', v)} unit="A₂₈₀" />
                   </div>
                   <div className="grid grid-cols-5 gap-2">
                     <CalcField label="Median" value={medianConc} unit="mg/mL" />
                     <NumInput label="Volume" value={t.finalVolume} onChange={v => updateTube(i, 'finalVolume', v)} unit="µL" />
                     <CalcField label="Mass" value={totalMass} unit="µg" />
                     <CalcField label="Amount" value={amount} unit="nmol" />
-                    <CalcField label="Conc" value={concUm} unit="µM" />
+                    <CalcField label="Molarity" value={concUm} unit="µM" />
                   </div>
                 </div>
               )
@@ -1169,33 +1152,7 @@ export default function ConjugationRecordDetail() {
               )
             })}
 
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">10.2 Purity & Identity (SDS-PAGE)</h3>
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              <TextInput label="Experiment Ref" value={r.sdsExperimentRef} onChange={v => updateField('sdsExperimentRef', v)} />
-              <TextInput label="Load Amount" value={r.sdsLoadAmount} onChange={v => updateField('sdsLoadAmount', v)} placeholder="µg per lane" />
-              <TextInput label="Staining Start" value={r.sdsStainStart} onChange={v => updateField('sdsStainStart', v)} placeholder="HH:MM" />
-              <TextInput label="Staining End" value={r.sdsStainEnd} onChange={v => updateField('sdsStainEnd', v)} placeholder="HH:MM" />
-            </div>
-            {tubeNums.map(i => {
-              const t = r.tubes[i]
-              return (
-                <div key={i} className="flex items-center gap-2 mb-2">
-                  <span className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-bold text-sm shrink-0">{i + 1}</span>
-                  <span className="text-xs text-slate-600 w-24 truncate">{t.adapterVariant || '—'}</span>
-                  <label className="text-xs flex items-center gap-1">
-                    <input type="checkbox" checked={t.sdsMwShift === true} onChange={e => updateTube(i, 'sdsMwShift', e.target.checked)} className="rounded" />
-                    MW Shift
-                  </label>
-                  <label className="text-xs flex items-center gap-1">
-                    <input type="checkbox" checked={t.sdsFreeProteinUnder10 === true} onChange={e => updateTube(i, 'sdsFreeProteinUnder10', e.target.checked)} className="rounded" />
-                    Free &lt;10%
-                  </label>
-                  <PassFail value={t.sdsPurityStatus} onChange={v => updateTube(i, 'sdsPurityStatus', v)} />
-                </div>
-              )
-            })}
-
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">10.3 Functional QC (Focal Molography)</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">10.2 Functional QC (Focal Molography)</h3>
             <TextInput label="Experiment Ref" value={r.qcExperimentRef} onChange={v => updateField('qcExperimentRef', v)} className="mb-3" />
             {tubeNums.map(i => {
               const t = r.tubes[i]
@@ -1211,6 +1168,21 @@ export default function ConjugationRecordDetail() {
                     <NumInput label="Activity Ratio" value={t.qcActivityRatio} onChange={v => updateTube(i, 'qcActivityRatio', v)} />
                     <NumInput label="k_off (s⁻¹)" value={t.qcKoff} onChange={v => updateTube(i, 'qcKoff', v)} />
                   </div>
+
+                  {/* Optional identity test — inject a known binder and check it binds */}
+                  <div className="mt-3 bg-white border border-slate-200 rounded-lg p-2.5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Identity Test (optional)</span>
+                      <div className="ml-auto"><PassFail value={t.identityStatus || ''} onChange={v => updateTube(i, 'identityStatus', v)} /></div>
+                    </div>
+                    <TextInput
+                      label="Binder"
+                      value={t.identityBinder || ''}
+                      onChange={v => updateTube(i, 'identityBinder', v)}
+                      placeholder="Binder injected, e.g. Cetuximab, TNFα"
+                    />
+                  </div>
+
                   <TubePhotos
                     kind="fm"
                     tubeIndex={i}

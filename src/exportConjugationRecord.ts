@@ -412,21 +412,19 @@ export function exportConjugationRecordPDF(r: ConjugationRecord, attachments: Re
 
   // ── Section 8 ──
   addSectionHeader(8, 'FINAL QUANTIFICATION')
-  addText('Method: NanoDrop, Protein A280, Blank with PBS-T. Use ε₂₈₀ Adapter (not Protein).', { size: 8, color: GRAY })
+  addText('Method: NanoDrop, A₂₈₀, Blank with PBS-T. Concentration derived with ε₂₈₀ Adapter and MW Adapter (not the Protein values).', { size: 8, color: GRAY })
   y += 2
   addTable(
-    [['Tube', 'Input', 'M1', 'M2', 'M3', 'Median (mg/mL)', 'Vol (µL)', 'Mass (µg)', 'MW Adapt (kDa)', 'Amount (nmol)', 'Conc (µM)']],
+    [['Tube', 'A1', 'A2', 'A3', 'Median (mg/mL)', 'Vol (µL)', 'Mass (µg)', 'MW Adapt (kDa)', 'Amount (nmol)', 'Molarity (µM)']],
     tubeNums.map(i => {
       const t = r.tubes[i]
       const variant = getVariant(t.adapterVariant, r)
-      const mode = t.finalInputMode ?? 'conc'
-      const modeLabel = mode === 'a280' ? 'A₂₈₀' : 'mg/mL'
       const medConc = getFinalMedianMgPerMl(t, variant)
       const vol = t.finalVolume
       const mass = calcTotalMassUg(medConc, vol)
       const amount = variant ? calcAmountNmol(mass, variant.mwAdapter) : null
-      const concUm = amount !== null && vol !== null && vol > 0 ? (amount / vol) * 1000 : null
-      return [String(i + 1), modeLabel, fmt(t.finalM1), fmt(t.finalM2), fmt(t.finalM3), fmt(medConc), fmt(vol, 0), fmt(mass, 1), variant ? String(variant.mwAdapter) : '—', fmt(amount, 2), fmt(concUm, 2)]
+      const concUm = calcMolarityUm(medConc, variant?.mwAdapter ?? null)
+      return [String(i + 1), fmt(t.finalM1), fmt(t.finalM2), fmt(t.finalM3), fmt(medConc), fmt(vol, 0), fmt(mass, 1), variant ? String(variant.mwAdapter) : '—', fmt(amount, 2), fmt(concUm, 2)]
     })
   )
 
@@ -488,26 +486,18 @@ export function exportConjugationRecordPDF(r: ConjugationRecord, attachments: Re
     })
   )
 
-  addSubsection('10.2 Purity & Identity (SDS-PAGE)')
-  addFieldPair('Experiment Ref', r.sdsExperimentRef, 'Load Amount', r.sdsLoadAmount)
-  addFieldPair('Staining Start', r.sdsStainStart, 'Staining End', r.sdsStainEnd)
-  y += 2
-  addTable(
-    [['Tube', 'Adapter', 'MW Shift?', 'Free < 10%?', 'Purity Status']],
-    tubeNums.map(i => {
-      const t = r.tubes[i]
-      return [String(i + 1), t.adapterVariant || '—', t.sdsMwShift ? 'Yes' : t.sdsMwShift === false ? 'No' : '—', t.sdsFreeProteinUnder10 ? 'Yes' : t.sdsFreeProteinUnder10 === false ? 'No' : '—', t.sdsPurityStatus ? t.sdsPurityStatus.toUpperCase() : '—']
-    })
-  )
-
-  addSubsection('10.3 Functional QC (Focal Molography)')
+  addSubsection('10.2 Functional QC (Focal Molography)')
   addField('Experiment Ref', r.qcExperimentRef)
   y += 2
   addTable(
-    [['Tube', 'Adapter', 'Immob. Ratio', 'Activity Ratio', 'k_off (s⁻¹)', 'Status']],
+    [['Tube', 'Adapter', 'Immob. Ratio', 'Activity Ratio', 'k_off (s⁻¹)', 'Status', 'Identity Binder', 'Binding']],
     tubeNums.map(i => {
       const t = r.tubes[i]
-      return [String(i + 1), t.adapterVariant || '—', fmt(t.qcImmobRatio, 3), fmt(t.qcActivityRatio, 3), fmt(t.qcKoff, 6), t.qcStatus ? t.qcStatus.toUpperCase() : '—']
+      return [
+        String(i + 1), t.adapterVariant || '—', fmt(t.qcImmobRatio, 3), fmt(t.qcActivityRatio, 3),
+        fmt(t.qcKoff, 6), t.qcStatus ? t.qcStatus.toUpperCase() : '—',
+        t.identityBinder || '—', t.identityStatus ? t.identityStatus.toUpperCase() : '—',
+      ]
     })
   )
   addPhotos('fm')
