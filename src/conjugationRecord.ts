@@ -176,6 +176,8 @@ export interface ConjugationRecord {
   // Section 6.1 - AKTA Setup
   aktaColumnPosition: string
   aktaMethodName: string
+  // Section 7 - Final Buffer Exchange (how many times the sample was concentrated)
+  finalBufferExchangeCycles: number | null
   // Section 10.2 - SDS-PAGE shared
   sdsExperimentRef: string
   sdsLoadAmount: string
@@ -208,6 +210,9 @@ export interface ConjugationRecord {
   checklists: Record<string, boolean>
   // Section comments (for improvement notes), keyed 's1'…'s11'
   sectionComments: Record<string, string>
+  // Project this record has been attached to as a note (empty = not attached)
+  projectId: string
+  projectName: string
   // See CURRENT_SCHEMA_VERSION. Absent/1 = original layout.
   schemaVersion?: number
   // Timestamps
@@ -272,12 +277,6 @@ export const CHECKLIST_ITEMS: Record<string, string> = {
   'akta_buffer_inspect': 'Buffer Inspection: Verify Buffer A and B are particle-free and clear',
   'akta_degas': 'Buffer Degassing: Degas Buffer A and Buffer B',
   'akta_wash': 'System Wash: Perform standard wash/prime routines',
-  // Section 7.1 - Final Buffer Exchange
-  'finbufex_prewash': 'Pre-Wash: Add 500 µL PBS-T → Spin (7k rcf, 10 min) → Discard flow-through',
-  'finbufex_load': 'Load: Add Sample + PBS-T to 2 mL → Spin (7k rcf, 10 min) → Discard flow-through',
-  'finbufex_wash1': 'Wash 1: Add 1.9 mL PBS-T → Spin (7k rcf, 10 min) → Discard flow-through',
-  'finbufex_wash2': 'Wash 2: Add 1.9 mL PBS-T → Spin (7k rcf, 10 min) → Discard flow-through',
-  'finbufex_recovery': 'Recovery: Invert filter → Spin (1k rcf, 2 min) → Collect retentate',
   // Section 9
   'aliquot_adjustment': 'Adjustment: Add calculated volume of PBS-T to each tube',
   'aliquot_mixing': 'Mixing: Mix gently by pipetting to ensure homogeneity',

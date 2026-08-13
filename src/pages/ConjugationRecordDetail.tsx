@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { doc, collection, query, orderBy, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore'
+import { doc, collection, query, orderBy, onSnapshot, updateDoc, addDoc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, ChevronDown, ChevronRight, ClipboardList, Check, X, Download, MessageSquare, Plus, Trash2, BookOpen, ImagePlus, Calculator } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, ClipboardList, Check, X, Download, MessageSquare, Plus, Trash2, BookOpen, ImagePlus, Calculator, Camera, FolderPlus } from 'lucide-react'
 import { exportConjugationRecordPDF } from '../exportConjugationRecord'
 import { subscribeAttachments, addAttachment, deleteAttachment } from '../recordAttachments'
 import {
@@ -231,6 +231,18 @@ function TubePhotos({ kind, tubeIndex, photos, onAdd, onDelete, onView }: {
             onChange={e => { handleFiles(e.target.files); e.target.value = '' }}
           />
         </label>
+        {/* Live camera capture (falls back to the file picker on desktop) */}
+        <label className="cursor-pointer flex items-center gap-1 text-[11px] text-primary font-medium hover:text-primary-dark transition-colors">
+          <Camera className="w-3.5 h-3.5" />
+          Photo
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={e => { handleFiles(e.target.files); e.target.value = '' }}
+          />
+        </label>
       </div>
       {photos.length > 0 && (
         <div className="flex gap-2 flex-wrap mt-1.5">
@@ -275,6 +287,11 @@ export default function ConjugationRecordDetail() {
   // ε Library import for custom adapter rows
   const [epsLibrary, setEpsLibrary] = useState<EpsEntry[]>([])
   const [epsTarget, setEpsTarget] = useState<{ index: number; role: 'protein' | 'adapter' } | null>(null)
+
+  // Attaching the finished record to a project as a note
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
+  const [attachTarget, setAttachTarget] = useState('')
+  const [attaching, setAttaching] = useState(false)
 
   // Draft strings for numeric inputs that must be clearable before retyping
   const [inputMassDraft, setInputMassDraft] = useState('')
@@ -345,6 +362,18 @@ export default function ConjugationRecordDetail() {
     })
   }, [user])
 
+  // Load projects (target for attaching this record as a note)
+  useEffect(() => {
+    if (!user) return
+    const q = query(
+      collection(firestore, 'users', user.uid, 'projects'),
+      orderBy('updatedAt', 'desc')
+    )
+    return onSnapshot(q, (snap) => {
+      setProjects(snap.docs.map(d => ({ id: d.id, name: d.data().name || 'Untitled' })))
+    })
+  }, [user])
+
   // Save helper - debounced
   const save = useCallback(async (updates: Partial<ConjugationRecord>) => {
     if (!user || !id) return
@@ -411,6 +440,35 @@ export default function ConjugationRecordDetail() {
 
   function photosFor(kind: AttachmentKind, tubeIndex: number) {
     return attachments.filter(a => a.kind === kind && a.tubeIndex === tubeIndex)
+  }
+
+  // Write a summary of this record into a project as a note
+  async function attachToProject() {
+    if (!user || !record || !attachTarget) return
+    const project = projects.find(p => p.id === attachTarget)
+    if (!project) return
+    setAttaching(true)
+    try {
+      const lines = [
+        `Conjugation Record: ${record.name}`,
+        `Prepared by ${record.preparedBy || '—'} · Started ${record.dateStarted || '—'}${record.dateFinished ? ` · Finished ${record.dateFinished}` : ''}`,
+        '',
+        ...record.tubes.slice(0, record.tubeCount).map((t, i) =>
+          `Tube ${i + 1}: ${t.adapterVariant || '—'}${t.oligoId ? ` · ${t.oligoId}` : ''}${t.disposition ? ` · ${t.disposition.toUpperCase()}` : ''}`
+        ),
+      ]
+      const now = Timestamp.now()
+      await addDoc(collection(firestore, 'users', user.uid, 'projects', project.id, 'notes'), {
+        content: lines.join('\n'),
+        createdAt: now,
+        updatedAt: now,
+      })
+      setRecord({ ...record, projectId: project.id, projectName: project.name })
+      save({ projectId: project.id, projectName: project.name })
+    } catch (err) {
+      console.error('Attach to project error:', err)
+    }
+    setAttaching(false)
   }
 
   // Apply an ε Library entry to a custom adapter row.
@@ -1014,9 +1072,12 @@ export default function ConjugationRecordDetail() {
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 mb-2">
               <p className="text-xs text-amber-700 font-medium">⚠ Align 2.0 mL filters with Membrane Panel facing OUTWARDS</p>
             </div>
-            {['finbufex_prewash', 'finbufex_load', 'finbufex_wash1', 'finbufex_wash2', 'finbufex_recovery'].map(key => (
-              <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
-            ))}
+            <NumInput
+              label="Concentration Cycles"
+              value={r.finalBufferExchangeCycles ?? null}
+              onChange={v => updateField('finalBufferExchangeCycles', v)}
+              unit="×"
+            />
           </div>
         </Section>
 
@@ -1269,6 +1330,44 @@ export default function ConjugationRecordDetail() {
             </div>
           </div>
         </Section>
+
+        {/* Attach the finished record to a project as a note */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <FolderPlus className="w-4 h-4 text-primary" />
+            <h2 className="text-sm font-semibold text-slate-900">Attach to Project</h2>
+          </div>
+          <p className="text-xs text-slate-400 mb-3">
+            Adds a summary of this record as a note in the selected project.
+          </p>
+          {r.projectName && (
+            <p className="text-xs text-green-600 mb-2">Attached to <b>{r.projectName}</b></p>
+          )}
+          {projects.length === 0 ? (
+            <p className="text-xs text-slate-400">No projects yet — create one on the Projects page first.</p>
+          ) : (
+            <div className="flex gap-2">
+              <select
+                value={attachTarget}
+                onChange={e => setAttachTarget(e.target.value)}
+                className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-light focus:border-transparent"
+              >
+                <option value="">Select project…</option>
+                {projects.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={attachToProject}
+                disabled={!attachTarget || attaching}
+                className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium disabled:opacity-40 hover:bg-primary-dark transition-colors"
+              >
+                {attaching ? 'Attaching…' : 'Attach'}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ε Library picker — fills MW and ε₂₈₀ of a custom adapter */}

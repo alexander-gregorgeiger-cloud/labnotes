@@ -419,7 +419,7 @@ export function exportConjugationRecordPDF(r: ConjugationRecord, attachments: Re
   addText('Filter: 10K Amicon, 2.0 mL format. Centrifugation: 7k rcf.', { size: 8, color: GRAY })
   y += 2
   addWarning('Align 2.0 mL filters with Membrane Panel facing OUTWARDS')
-  addChecklist(['finbufex_prewash', 'finbufex_load', 'finbufex_wash1', 'finbufex_wash2', 'finbufex_recovery'])
+  addField('Concentration cycles', r.finalBufferExchangeCycles !== null && r.finalBufferExchangeCycles !== undefined ? `${r.finalBufferExchangeCycles}×` : '—')
 
   // ── Section 8 ──
   addSectionHeader(8, 'FINAL QUANTIFICATION')
