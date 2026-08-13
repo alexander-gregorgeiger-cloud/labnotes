@@ -13,6 +13,8 @@ import {
   calcVariantVolumes,
   getPostExMedianMgPerMl,
   getFinalMedianMgPerMl,
+  calcMolarityUm,
+  calcTheoreticalA280,
   ATTACHMENT_LABELS,
   type ConjugationRecord,
   type AdapterVariant,
@@ -281,26 +283,16 @@ export function exportConjugationRecordPDF(r: ConjugationRecord, attachments: Re
   // ── Section 2 ──
   const lr = r.mixingRatioLinker ?? 2
   const or_ = r.mixingRatioOligo ?? 2.5
-  const inputMg = r.inputMassPerTube ?? 1
   const allVariants = getAllVariants(r)
 
   addSectionHeader(2, 'ADAPTER SPECIFICATIONS')
-  addText(`Standard Input: ${inputMg} mg protein per tube. Mixing Ratio (Protein : Linker : Oligo): 1 : ${lr} : ${or_}`, { size: 8, color: GRAY })
+  addText(`Mixing Ratio (Protein : Linker : Oligo): 1 : ${lr} : ${or_}`, { size: 8, color: GRAY })
   y += 2
 
   addSubsection('2.1 Protein & Adapter Properties')
   addTable(
     [['Adapter Variant', 'MW Protein (kDa)', 'MW Adapter (kDa)', 'ε₂₈₀ Protein', 'ε₂₈₀ Adapter']],
     allVariants.map(v => [v.name, String(v.mwProtein), String(v.mwAdapter), v.e280Protein.toLocaleString(), v.e280Adapter.toLocaleString()])
-  )
-
-  addSubsection('2.2 Pre-Calculated Volumes per Tube (1 mg Input)')
-  addTable(
-    [['Variant', 'Protein (nmol)', 'Linker (nmol)', 'Linker Vol (µL)', 'Oligo (nmol)', 'Oligo Vol (µL)']],
-    allVariants.map(v => {
-      const vols = calcVariantVolumes(v.mwProtein, lr, or_, inputMg)
-      return [v.name, vols.proteinAmount.toFixed(1), vols.linkerAmount.toFixed(1), vols.linkerVolume.toFixed(1), vols.oligoAmount.toFixed(1), vols.oligoVolume.toFixed(0)]
-    })
   )
 
   // ── Section 3 ──
@@ -313,22 +305,24 @@ export function exportConjugationRecordPDF(r: ConjugationRecord, attachments: Re
   y += 2
   addSubsection('4.1 Measurements')
   addTable(
-    [['Tube', 'Input', 'M1', 'M2', 'M3', 'Median (mg/mL)', 'Vol (µL)', 'Mass (µg)', 'Amount (nmol)', 'Conc (µM)', '≥ 900 µg?']],
+    [['Tube', 'Input', 'M1', 'M2', 'M3', 'Conc (mg/mL)', 'Molarity (µM)', 'Theo. A₂₈₀', 'Vol (µL)', 'Mass (µg)', 'Amount (nmol)', '≥ 900 µg?']],
     tubeNums.map(i => {
       const t = r.tubes[i]
       const variant = getVariant(t.adapterVariant, r)
       const mode = t.postExInputMode ?? 'a280'
-      const modeLabel = mode === 'a280' ? 'A₂₈₀' : mode === 'manual' ? 'Manual (µM)' : 'mg/mL'
+      const modeLabel = mode === 'a280' ? 'A₂₈₀' : mode === 'manual' ? 'Manual (µM)' : mode === 'mass' ? 'Mass (µg)' : 'mg/mL'
       const medConc = getPostExMedianMgPerMl(t, variant)
       const vol = t.postExVolume
-      const mass = calcTotalMassUg(medConc, vol)
+      const mass = mode === 'mass' ? (t.postExTotalMass ?? null) : calcTotalMassUg(medConc, vol)
       const amount = variant ? calcAmountNmol(mass, variant.mwProtein) : null
-      const concUm = amount !== null && vol !== null && vol > 0 ? (amount / vol) * 1000 : null
+      const concUm = calcMolarityUm(medConc, variant?.mwProtein ?? null)
+      const theoA280 = calcTheoreticalA280(medConc, variant?.mwProtein ?? null, variant?.e280Protein ?? null)
       const ok = mass !== null ? (mass >= 900 ? 'Yes' : 'No') : '—'
-      const m1 = mode === 'manual' ? '—' : fmt(t.postExM1)
-      const m2 = mode === 'manual' ? '—' : fmt(t.postExM2)
-      const m3 = mode === 'manual' ? '—' : fmt(t.postExM3)
-      return [String(i + 1), modeLabel, m1, m2, m3, fmt(medConc), fmt(vol, 0), fmt(mass, 1), fmt(amount, 2), fmt(concUm, 2), ok]
+      const readings = mode === 'a280' || mode === 'conc'
+      const m1 = readings ? fmt(t.postExM1) : '—'
+      const m2 = readings ? fmt(t.postExM2) : '—'
+      const m3 = readings ? fmt(t.postExM3) : '—'
+      return [String(i + 1), modeLabel, m1, m2, m3, fmt(medConc), fmt(concUm, 2), fmt(theoA280, 3), fmt(vol, 0), fmt(mass, 1), fmt(amount, 2), ok]
     })
   )
 
@@ -365,32 +359,27 @@ export function exportConjugationRecordPDF(r: ConjugationRecord, attachments: Re
 
   // ── Section 6 ──
   addSectionHeader(6, 'AKTA PURIFICATION')
-  addSubsection('6.1 System Setup & Verification')
-  addChecklist(['akta_column', 'akta_buffer_inspect', 'akta_degas', 'akta_wash'])
-  addFieldPair('Column Position', r.aktaColumnPosition, 'Method Name', r.aktaMethodName)
-  y += 2
-
-  addSubsection('6.2 Purification Runs')
+  addSubsection('6.1 Purification Runs')
   addTable(
-    [['Tube', 'Gradient', 'Top-up', 'Run Time', 'Result File', 'Collected Fractions', 'Collected Vol (µL)']],
+    [['Tube', 'Gradient', 'Top-up', 'Collected Fractions', 'Collected Vol (µL)']],
     tubeNums.map(i => {
       const t = r.tubes[i]
       const gradient = AKTA_GRADIENT_MODES.find(m => m.value === t.aktaGradientMode)?.label || '—'
-      return [String(i + 1), gradient, check(t.aktaTopUp), t.aktaRunTime || '—', t.aktaResultFile || '—', t.aktaFractionsCollected || '—', fmt(t.aktaCollectedVolume, 0)]
+      return [String(i + 1), gradient, check(t.aktaTopUp), t.aktaFractionsCollected || '—', fmt(t.aktaCollectedVolume, 0)]
     })
   )
 
   // Custom gradients carry free-text notes that do not fit the table.
   const customGradients = tubeNums.filter(i => r.tubes[i].aktaGradientMode === 'custom' && (r.tubes[i].aktaGradientNotes || '').trim())
   if (customGradients.length > 0) {
-    addSubsection('6.3 Custom Gradient Notes')
+    addSubsection('6.2 Custom Gradient Notes')
     for (const i of customGradients) {
       addField(`Tube ${i + 1}`, r.tubes[i].aktaGradientNotes)
     }
     y += 2
   }
 
-  addSubsection(`${customGradients.length > 0 ? '6.4' : '6.3'} AUC Quantification`)
+  addSubsection(`${customGradients.length > 0 ? '6.3' : '6.2'} AUC Quantification`)
   addText('n = AUC / (ε₂₈₀ Adapter × l × 10⁶); mass = n × MW Adapter; conc = n / collected volume.', { size: 8, color: GRAY })
   y += 2
   addTable(

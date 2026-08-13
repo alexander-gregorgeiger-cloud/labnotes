@@ -23,6 +23,8 @@ import {
   calcVariantVolumes,
   getPostExMedianMgPerMl,
   getFinalMedianMgPerMl,
+  calcMolarityUm,
+  calcTheoreticalA280,
   migrateSectionComments,
   type ConjugationRecord,
   type TubeData,
@@ -294,14 +296,12 @@ export default function ConjugationRecordDetail() {
   const [attaching, setAttaching] = useState(false)
 
   // Draft strings for numeric inputs that must be clearable before retyping
-  const [inputMassDraft, setInputMassDraft] = useState('')
   const [linkerRatioDraft, setLinkerRatioDraft] = useState('')
   const [oligoRatioDraft, setOligoRatioDraft] = useState('')
 
   // Sync drafts when the record first loads (keyed on record id so re-opens reset correctly)
   useEffect(() => {
     if (!record) return
-    setInputMassDraft(String(record.inputMassPerTube ?? 1))
     setLinkerRatioDraft(String(record.mixingRatioLinker ?? 2))
     setOligoRatioDraft(String(record.mixingRatioOligo ?? 2.5))
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -752,56 +752,6 @@ export default function ConjugationRecordDetail() {
               Add Custom Adapter
             </button>
 
-            {/* 2.2 Pre-Calculated Volumes (dynamic — recalculates with ratio & input mass) */}
-            <div className="flex items-center justify-between mt-4 mb-2">
-              <h3 className="text-sm font-semibold text-slate-700">2.2 Pre-Calculated Volumes</h3>
-              <div className="flex items-center gap-1.5">
-                <label className="text-xs text-slate-400">Input mass</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0.1"
-                  value={inputMassDraft}
-                  onChange={e => setInputMassDraft(e.target.value)}
-                  onBlur={() => {
-                    const val = parseFloat(inputMassDraft)
-                    if (!isNaN(val) && val > 0) updateField('inputMassPerTube', val)
-                    else setInputMassDraft(String(r.inputMassPerTube ?? 1))
-                  }}
-                  className="w-16 text-center px-2 py-1 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light"
-                />
-                <span className="text-xs text-slate-400">mg</span>
-              </div>
-            </div>
-            <div className="overflow-x-auto -mx-4 px-4">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="bg-primary text-white">
-                    <th className="px-2 py-1.5 text-left rounded-tl-lg">Variant</th>
-                    <th className="px-2 py-1.5 text-right">Prot (nmol)</th>
-                    <th className="px-2 py-1.5 text-right">Linker (µL)</th>
-                    <th className="px-2 py-1.5 text-right">Oligo (nmol)</th>
-                    <th className="px-2 py-1.5 text-right rounded-tr-lg">Oligo (µL)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {getAllVariants(r).map(v => {
-                    const vols = calcVariantVolumes(v.mwProtein, r.mixingRatioLinker ?? 2, r.mixingRatioOligo ?? 2.5, r.inputMassPerTube ?? 1)
-                    const isCustom = !(ADAPTER_VARIANTS.some(bv => bv.name === v.name))
-                    return (
-                      <tr key={v.name} className={`border-b border-slate-100 ${isCustom ? 'bg-primary/5' : ''}`}>
-                        <td className="px-2 py-1.5 font-medium">{v.name}</td>
-                        <td className="px-2 py-1.5 text-right font-mono">{vols.proteinAmount.toFixed(1)}</td>
-                        <td className="px-2 py-1.5 text-right font-mono">{vols.linkerVolume.toFixed(1)}</td>
-                        <td className="px-2 py-1.5 text-right font-mono">{vols.oligoAmount.toFixed(1)}</td>
-                        <td className="px-2 py-1.5 text-right font-mono">{vols.oligoVolume.toFixed(0)}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-
           </div>
         </Section>
 
@@ -820,24 +770,27 @@ export default function ConjugationRecordDetail() {
         <Section num={4} title="Input Quantification" comment={r.sectionComments?.['s4']} onCommentChange={v => updateComment('s4', v)}>
           <div className="mt-3">
             <h3 className="text-sm font-semibold text-slate-700 mb-2">4.1 Measurements</h3>
-            <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. Enter <b>A₂₈₀</b> (3 readings, concentration derived via variant ε and MW) or switch to <b>Manual</b> to enter the concentration directly in µM.</p>
+            <p className="text-xs text-slate-500 mb-3">Method: NanoDrop, Protein A280, Blank with PBS-T. Enter <b>A₂₈₀</b> (3 readings, concentration derived via variant ε and MW), <b>Manual</b> to give the concentration directly in µM, or <b>Mass</b> to give the total mass and volume. Molarity is derived from the concentration and MW alone — it does not require the volume.</p>
             {tubeNums.map(i => {
               const t = r.tubes[i]
               const variant = getVariant(t.adapterVariant, r)
               const mode = t.postExInputMode ?? 'conc'
               const isA280 = mode === 'a280'
               const isManual = mode === 'manual'
+              const isMass = mode === 'mass'
               const inputUnit = isA280 ? 'A₂₈₀' : 'mg/mL'
               const inputLabelPrefix = isA280 ? 'A' : 'M'
               const medianConc = getPostExMedianMgPerMl(t, variant)
               const vol = t.postExVolume
-              const totalMass = calcTotalMassUg(medianConc, vol)
+              // In mass mode the mass is the input; otherwise it follows from conc × volume
+              const totalMass = isMass ? (t.postExTotalMass ?? null) : calcTotalMassUg(medianConc, vol)
               const amount = variant ? calcAmountNmol(totalMass, variant.mwProtein) : null
-              const concUm = amount !== null && vol !== null && vol > 0 ? (amount / vol) * 1000 : null
+              const concUm = calcMolarityUm(medianConc, variant?.mwProtein ?? null)
+              const theoA280 = calcTheoreticalA280(medianConc, variant?.mwProtein ?? null, variant?.e280Protein ?? null)
               const massOk = totalMass !== null ? totalMass >= 900 : null
               const needsVariantForA280 = isA280 && !variant
               const needsVariantForManual = isManual && !variant
-              const medianLabel = isManual ? 'Conc' : 'Median'
+              const medianLabel = isA280 || mode === 'conc' ? 'Median' : 'Conc'
               return (
                 <div key={i} className="bg-slate-50 rounded-xl p-3 mb-2">
                   <div className="flex items-center gap-2 mb-2">
@@ -855,6 +808,12 @@ export default function ConjugationRecordDetail() {
                         className={`px-2 py-0.5 border-l border-slate-200 ${isManual ? 'bg-primary text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
                         title="Already determined — enter concentration directly in µM"
                       >Manual</button>
+                      <button
+                        type="button"
+                        onClick={() => updateTube(i, 'postExInputMode', 'mass')}
+                        className={`px-2 py-0.5 border-l border-slate-200 ${isMass ? 'bg-primary text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
+                        title="Enter the total mass and the volume"
+                      >Mass</button>
                     </div>
                     {massOk !== null && (massOk
                       ? <span className="ml-auto text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">≥ 900 µg ✓</span>
@@ -867,7 +826,12 @@ export default function ConjugationRecordDetail() {
                   {needsVariantForManual && (
                     <p className="text-[10px] text-amber-600 mb-1">Select an adapter variant to derive mass from µM.</p>
                   )}
-                  {isManual ? (
+                  {isMass ? (
+                    <div className="grid grid-cols-3 gap-2 mb-2">
+                      <NumInput label="Total Mass" value={t.postExTotalMass ?? null} onChange={v => updateTube(i, 'postExTotalMass', v)} unit="µg" />
+                      <NumInput label="Volume" value={t.postExVolume} onChange={v => updateTube(i, 'postExVolume', v)} unit="µL" />
+                    </div>
+                  ) : isManual ? (
                     <div className="grid grid-cols-3 gap-2 mb-2">
                       <NumInput label="Conc" value={t.postExManualConc ?? null} onChange={v => updateTube(i, 'postExManualConc', v)} unit="µM" />
                     </div>
@@ -878,12 +842,15 @@ export default function ConjugationRecordDetail() {
                       <NumInput label={`${inputLabelPrefix}3`} value={t.postExM3} onChange={v => updateTube(i, 'postExM3', v)} unit={inputUnit} />
                     </div>
                   )}
-                  <div className="grid grid-cols-5 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <CalcField label={medianLabel} value={medianConc} unit="mg/mL" />
-                    <NumInput label="Volume" value={t.postExVolume} onChange={v => updateTube(i, 'postExVolume', v)} unit="µL" />
+                    <CalcField label="Molarity" value={concUm} unit="µM" />
+                    <CalcField label="Theo. A₂₈₀" value={theoA280} />
+                    {!isMass && (
+                      <NumInput label="Volume" value={t.postExVolume} onChange={v => updateTube(i, 'postExVolume', v)} unit="µL" />
+                    )}
                     <CalcField label="Mass" value={totalMass} unit="µg" />
                     <CalcField label="Amount" value={amount} unit="nmol" />
-                    <CalcField label="Conc" value={concUm} unit="µM" />
                   </div>
                 </div>
               )
@@ -955,16 +922,7 @@ export default function ConjugationRecordDetail() {
         {/* ── Section 6: AKTA Purification ── */}
         <Section num={6} title="AKTA Purification" comment={r.sectionComments?.['s6']} onCommentChange={v => updateComment('s6', v)}>
           <div className="mt-3">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">6.1 System Setup & Verification</h3>
-            {['akta_column', 'akta_buffer_inspect', 'akta_degas', 'akta_wash'].map(key => (
-              <CheckItem key={key} label={CHECKLIST_ITEMS[key]} checked={r.checklists?.[key] || false} onChange={v => updateChecklist(key, v)} />
-            ))}
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              <TextInput label="Column Position" value={r.aktaColumnPosition} onChange={v => updateField('aktaColumnPosition', v)} />
-              <TextInput label="Method Name" value={r.aktaMethodName} onChange={v => updateField('aktaMethodName', v)} />
-            </div>
-
-            <h3 className="text-sm font-semibold text-slate-700 mt-4 mb-2">6.2 Purification Runs</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">6.1 Purification Runs</h3>
             {tubeNums.map(i => {
               const t = r.tubes[i]
               const variant = getVariant(t.adapterVariant, r)
@@ -1011,11 +969,7 @@ export default function ConjugationRecordDetail() {
                     />
                   )}
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <TextInput label="Run Time" value={t.aktaRunTime} onChange={v => updateTube(i, 'aktaRunTime', v)} />
-                    <TextInput label="Result File" value={t.aktaResultFile} onChange={v => updateTube(i, 'aktaResultFile', v)} />
-                  </div>
-                  <div className="mt-2">
+                  <div>
                     <TextInput
                       label="Collected Fractions"
                       value={t.aktaFractionsCollected}

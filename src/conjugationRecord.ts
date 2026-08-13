@@ -98,19 +98,19 @@ export interface TubeData {
   // Section 4 - Input Quantification (3x NanoDrop)
   // Input mode: 'a280' → M1..M3 stored as A₂₈₀ units;
   // 'manual' → operator-entered concentration in postExManualConc (µM), M1..M3 ignored.
+  // 'mass'   → operator-entered total mass in postExTotalMass (µg) + volume, M1..M3 ignored.
   // 'conc' is a legacy mode (mg/mL inputs in M1..M3) kept for backward-compat with existing records.
-  postExInputMode?: 'conc' | 'a280' | 'manual'
+  postExInputMode?: 'conc' | 'a280' | 'manual' | 'mass'
   postExM1: number | null
   postExM2: number | null
   postExM3: number | null
   postExManualConc?: number | null  // µM — used only when postExInputMode === 'manual'
+  postExTotalMass?: number | null   // µg — used only when postExInputMode === 'mass'
   postExVolume: number | null   // µL
   // Section 6 - AKTA Purification (per conjugation)
   aktaGradientMode: AktaGradientMode
   aktaGradientNotes: string     // free text, used with the 'custom' mode
   aktaTopUp: boolean
-  aktaRunTime: string
-  aktaResultFile: string
   aktaFractionsCollected: string
   aktaCollectedVolume: number | null // µL
   // Peak integral from the ÄKTA UV trace, used by the inline AUC calculator
@@ -173,9 +173,6 @@ export interface ConjugationRecord {
   activationStartTime: string
   conjugationStartTime: string
   conjugationEndTime: string
-  // Section 6.1 - AKTA Setup
-  aktaColumnPosition: string
-  aktaMethodName: string
   // Section 7 - Final Buffer Exchange (how many times the sample was concentrated)
   finalBufferExchangeCycles: number | null
   // Section 10.2 - SDS-PAGE shared
@@ -201,8 +198,6 @@ export interface ConjugationRecord {
   // Mixing ratio Protein : Linker : Oligo (protein is always 1)
   mixingRatioLinker: number   // default 2
   mixingRatioOligo: number    // default 2.5
-  // Input mass per tube for pre-calculated volumes (mg, default 1)
-  inputMassPerTube: number
   // Tubes (1-15)
   tubeCount: number
   tubes: TubeData[]
@@ -232,12 +227,11 @@ export function createDefaultTube(): TubeData {
     postExM2: null,
     postExM3: null,
     postExManualConc: null,
+    postExTotalMass: null,
     postExVolume: null,
     aktaGradientMode: '',
     aktaGradientNotes: '',
     aktaTopUp: false,
-    aktaRunTime: '',
-    aktaResultFile: '',
     aktaFractionsCollected: '',
     aktaCollectedVolume: null,
     aktaAuc: null,
@@ -273,10 +267,6 @@ export const CHECKLIST_ITEMS: Record<string, string> = {
   'conjugation_mixing': 'Mixing: Mix gently by pipetting up and down (5x)',
   'conjugation_incubation': 'Incubation: 60 min, 25 ºC, 500 rpm',
   // Section 6.1 - AKTA Setup
-  'akta_column': 'Column Verification: Resource Q in position',
-  'akta_buffer_inspect': 'Buffer Inspection: Verify Buffer A and B are particle-free and clear',
-  'akta_degas': 'Buffer Degassing: Degas Buffer A and Buffer B',
-  'akta_wash': 'System Wash: Perform standard wash/prime routines',
   // Section 9
   'aliquot_adjustment': 'Adjustment: Add calculated volume of PBS-T to each tube',
   'aliquot_mixing': 'Mixing: Mix gently by pipetting to ensure homogeneity',
@@ -343,6 +333,25 @@ export function calcTotalMassUg(concMgMl: number | null, volumeUl: number | null
 export function calcAmountNmol(massUg: number | null, mwKda: number | null): number | null {
   if (massUg === null || mwKda === null || mwKda === 0) return null
   return massUg / mwKda // µg / kDa = nmol
+}
+
+/**
+ * Molar concentration from a mass concentration — independent of volume.
+ *   c[µM] = c[mg/mL] × 1000 / MW[kDa]
+ */
+export function calcMolarityUm(concMgMl: number | null, mwKda: number | null): number | null {
+  if (concMgMl === null || !mwKda) return null
+  return (concMgMl * 1000) / mwKda
+}
+
+/** Expected A₂₈₀ at 1 cm for a mass concentration — inverse of a280ToMgPerMl. */
+export function calcTheoreticalA280(
+  concMgMl: number | null,
+  mwKda: number | null,
+  e280: number | null
+): number | null {
+  if (concMgMl === null || !mwKda || !e280) return null
+  return (concMgMl * e280) / (mwKda * 1000)
 }
 
 export function calcYieldPercent(startNmol: number | null, finalNmol: number | null): number | null {
@@ -428,14 +437,21 @@ export function a280ToMgPerMl(
  */
 export function getPostExMedianMgPerMl(
   tube: {
-    postExInputMode?: 'conc' | 'a280' | 'manual'
+    postExInputMode?: 'conc' | 'a280' | 'manual' | 'mass'
     postExM1: number | null
     postExM2: number | null
     postExM3: number | null
     postExManualConc?: number | null
+    postExTotalMass?: number | null
+    postExVolume?: number | null
   },
   variant?: { mwProtein: number; e280Protein: number } | null
 ): number | null {
+  if (tube.postExInputMode === 'mass') {
+    if (tube.postExTotalMass == null || !tube.postExVolume) return null
+    // µg / µL = mg/mL
+    return tube.postExTotalMass / tube.postExVolume
+  }
   if (tube.postExInputMode === 'manual') {
     if (tube.postExManualConc == null) return null
     if (!variant) return null
