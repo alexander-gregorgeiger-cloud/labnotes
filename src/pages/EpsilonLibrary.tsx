@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, Plus, Trash2, Copy, Calculator, Save, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Copy, Calculator, Save, ChevronDown, ChevronUp, Database, Search } from 'lucide-react'
+import { fetchRegistry, searchRegistry, absorbanceAt1gPerL, type RegistryProtein } from '../registry'
 
 // --- Amino acid average residue masses (same as ProtParam/ExPASy) ---
 const AA_MW: Record<string, number> = {
@@ -167,6 +168,14 @@ export default function EpsilonLibrary() {
   const [newEMass, setNewEMass] = useState('')
   const [newMW, setNewMW] = useState('')
 
+  // Protein Registry lookup. The catalog is only fetched when the card is first
+  // opened, so anyone who never uses it pays nothing.
+  const [showRegistry, setShowRegistry] = useState(false)
+  const [registry, setRegistry] = useState<RegistryProtein[] | null>(null)
+  const [registryError, setRegistryError] = useState('')
+  const [registryLoading, setRegistryLoading] = useState(false)
+  const [registryTerm, setRegistryTerm] = useState('')
+
   useEffect(() => {
     if (!user) return
     const q = query(
@@ -202,6 +211,37 @@ export default function EpsilonLibrary() {
     })
     setNewName(''); setNewE280(''); setNewE260(''); setNewEMass(''); setNewMW('')
     setShowAdd(false)
+  }
+
+  async function openRegistry() {
+    const opening = !showRegistry
+    setShowRegistry(opening)
+    if (!opening || registry || registryLoading) return
+    setRegistryLoading(true)
+    setRegistryError('')
+    try {
+      setRegistry(await fetchRegistry())
+    } catch {
+      // Almost always "this device isn't on the tailnet" rather than a broken registry,
+      // so say that instead of showing a network error nobody can act on.
+      setRegistryError('Registry not reachable — this lookup needs the Lino tailnet (Tailscale on).')
+    } finally {
+      setRegistryLoading(false)
+    }
+  }
+
+  // Registry values are pre-filled into the normal New Entry form rather than saved
+  // directly: most records are unverified with a computed ε₂₈₀, and the same protein
+  // often appears more than once, so the numbers deserve a look before they are kept.
+  function applyRegistryHit(hit: RegistryProtein) {
+    setNewName(hit.name)
+    setNewE280(hit.epsilon_280 != null ? String(Math.round(hit.epsilon_280)) : '')
+    setNewE260('')
+    setNewMW(hit.mw_da != null ? String(Math.round(hit.mw_da)) : '')
+    setNewEMass(absorbanceAt1gPerL(hit))
+    setShowAdd(true)
+    setShowRegistry(false)
+    setRegistryTerm('')
   }
 
   async function deleteEntry(entryId: string) {
@@ -472,6 +512,119 @@ export default function EpsilonLibrary() {
                     <Save className="w-4 h-4" />
                     Save to Library
                   </button>
+                </>
+              )
+            })()}
+          </div>
+        )}
+      </div>
+
+      {/* Protein Registry lookup */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 mb-4 overflow-hidden">
+        <button
+          onClick={openRegistry}
+          className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-accent/10 rounded-xl flex items-center justify-center">
+              <Database className="w-5 h-5 text-accent" />
+            </div>
+            <div className="text-left">
+              <span className="font-medium text-slate-900 text-sm">Protein Registry</span>
+              <p className="text-xs text-slate-400">Look up MW and ε₂₈₀ from the Lino reagent catalog</p>
+            </div>
+          </div>
+          {showRegistry ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+        </button>
+
+        {showRegistry && (
+          <div className="px-4 pb-4 border-t border-slate-100 pt-3">
+            <div className="relative mb-3">
+              <Search className="w-4 h-4 text-slate-300 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={registryTerm}
+                onChange={e => setRegistryTerm(e.target.value)}
+                placeholder="Search by name, vendor or product number"
+                autoFocus
+                disabled={!registry}
+                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light disabled:bg-slate-50"
+              />
+            </div>
+
+            {registryLoading && <p className="text-xs text-slate-400 text-center py-2">Loading catalog…</p>}
+
+            {registryError && (
+              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                {registryError}
+              </div>
+            )}
+
+            {registry && !registryTerm.trim() && (
+              <p className="text-xs text-slate-400 text-center py-2">
+                {registry.length} proteins in the registry. Type a name to search.
+              </p>
+            )}
+
+            {registry && registryTerm.trim() && (() => {
+              const hits = searchRegistry(registry, registryTerm)
+              if (hits.length === 0) {
+                return <p className="text-xs text-slate-400 text-center py-2">No match in the registry.</p>
+              }
+              return (
+                <>
+                  <div className="space-y-2">
+                    {hits.slice(0, 25).map(hit => {
+                      const hasValues = hit.epsilon_280 != null || hit.mw_da != null
+                      return (
+                        <button
+                          key={hit.id}
+                          onClick={() => applyRegistryHit(hit)}
+                          disabled={!hasValues}
+                          className="w-full text-left bg-slate-50 rounded-xl p-3 border border-transparent hover:border-primary-light hover:bg-white transition-all disabled:opacity-50 disabled:hover:border-transparent disabled:hover:bg-slate-50 disabled:cursor-not-allowed"
+                        >
+                          <div className="font-medium text-slate-900 text-sm">{hit.name}</div>
+                          {(hit.vendor || hit.product_number) && (
+                            <div className="text-[10px] text-slate-400 mt-0.5">
+                              {[hit.vendor, hit.product_number].filter(Boolean).join(' · ')}
+                            </div>
+                          )}
+                          <div className="text-xs text-slate-500 mt-1">
+                            {hasValues ? (
+                              <>
+                                {hit.epsilon_280 != null && <>ε₂₈₀ = {Number(hit.epsilon_280).toLocaleString()}</>}
+                                {hit.epsilon_280 != null && hit.mw_da != null && ' · '}
+                                {hit.mw_da != null && <>MW = {Number(hit.mw_da).toLocaleString()} Da</>}
+                              </>
+                            ) : (
+                              <span className="text-slate-400">No ε₂₈₀ or MW recorded</span>
+                            )}
+                          </div>
+                          {/* Most of the catalog is unverified with a computed ε₂₈₀, so where a
+                              number came from is shown next to it rather than left implied. */}
+                          <div className="flex items-center gap-1.5 mt-1.5">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                              hit.verification_status === 'verified'
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : 'bg-slate-200 text-slate-500'
+                            }`}>
+                              {hit.verification_status}
+                            </span>
+                            {hit.epsilon_280 != null && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-500">
+                                ε {hit.epsilon_280_source}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {hits.length > 25 && (
+                    <p className="text-[10px] text-slate-400 text-center mt-2">
+                      Showing 25 of {hits.length} matches — refine the search.
+                    </p>
+                  )}
                 </>
               )
             })()}
