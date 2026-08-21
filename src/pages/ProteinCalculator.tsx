@@ -16,6 +16,19 @@ interface EpsilonEntry {
   createdAt: Date
 }
 
+type DilUnit = 'µM' | 'nM' | 'mg/mL'
+
+interface DilComp {
+  id: string
+  name: string
+  c1: string
+  c2: string
+  unit: DilUnit
+}
+
+let dilCompSeq = 0
+const newDilComp = (): DilComp => ({ id: `dil-${++dilCompSeq}`, name: '', c1: '', c2: '', unit: 'µM' })
+
 export default function ProteinCalculator() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -55,9 +68,8 @@ export default function ProteinCalculator() {
   const [newEpsMass, setNewEpsMass] = useState('')
   const [newEpsMW, setNewEpsMW] = useState('')
 
-  // Dilution calculator (C1V1 = C2V2)
-  const [dilC1, setDilC1] = useState('')
-  const [dilC2, setDilC2] = useState('')
+  // Dilution calculator (C1V1 = C2V2), one or more components into a shared V2
+  const [dilComps, setDilComps] = useState<DilComp[]>(() => [newDilComp()])
   const [dilV2, setDilV2] = useState('')
 
   // Pre-fill from URL params (from projects / epsilon library)
@@ -77,11 +89,24 @@ export default function ProteinCalculator() {
   const mwVal = (parseFloat(mw) || 0) * (mwUnit === 'kda' ? 1000 : 1)
   const volVal = parseFloat(vol) || 0
 
+  const dilV2Val = parseFloat(dilV2) || 0
+  const dilRows = dilComps.map(c => {
+    const c1 = parseFloat(c.c1) || 0
+    const c2 = parseFloat(c.c2) || 0
+    const valid = c1 > 0 && c2 > 0 && c1 >= c2
+    return { ...c, c1, c2, valid, v1: valid && dilV2Val > 0 ? (c2 * dilV2Val) / c1 : 0 }
+  })
+  const dilStockTotal = dilRows.reduce((s, r) => s + r.v1, 0)
+  const dilBuffer = dilV2Val - dilStockTotal
+  const dilOk = dilV2Val > 0 && dilRows.every(r => r.valid) && dilBuffer >= 0
+  const updateDilComp = (id: string, patch: Partial<DilComp>) =>
+    setDilComps(cs => cs.map(c => (c.id === id ? { ...c, ...patch } : c)))
+
   const hasResult = mode === 'a280'
     ? absVal > 0 && epsVal > 0
     : mode === 'auc'
     ? aucVal > 0 && epsVal > 0
-    : (parseFloat(dilC1) || 0) > 0 && (parseFloat(dilC2) || 0) > 0 && (parseFloat(dilV2) || 0) > 0
+    : dilOk
   const hasVol = volVal > 0
   const hasMW = mwVal > 0
   const isMass = epsMode === 'mass'
@@ -201,15 +226,14 @@ export default function ProteinCalculator() {
 
   function buildText(): string {
     if (mode === 'dilution') {
-      const c1 = parseFloat(dilC1) || 0
-      const c2 = parseFloat(dilC2) || 0
-      const v2 = parseFloat(dilV2) || 0
-      const v1 = c1 > 0 ? (c2 * v2) / c1 : 0
-      const buffer = v2 - v1
-      let text = `Dilution (C₁V₁ = C₂V₂)\nDate: ${new Date().toLocaleDateString()}\n\n`
-      text += `C₁ = ${c1} µM, C₂ = ${c2} µM, V₂ = ${v2} µL\n`
-      text += `V₁ (stock) = ${v1.toFixed(2)} µL\n`
-      text += `Buffer = ${buffer.toFixed(2)} µL\n`
+      let text = `Dilution (C₁V₁ = C₂V₂)\nDate: ${new Date().toLocaleDateString()}\n`
+      text += `Final volume V₂ = ${dilV2Val} µL\n\n`
+      dilRows.forEach((r, i) => {
+        const label = r.name.trim() || `Component ${i + 1}`
+        text += `${label}: ${r.c1} ${r.unit} → ${r.c2} ${r.unit}   V₁ = ${r.v1.toFixed(2)} µL\n`
+      })
+      text += `\nBuffer = ${dilBuffer.toFixed(2)} µL\n`
+      text += `Total  = ${dilV2Val.toFixed(2)} µL\n`
       return text
     }
     let text = `Protein Calculator Results (${mode === 'auc' ? 'AUC/ÄKTA' : 'A280'})\n`
@@ -775,56 +799,92 @@ export default function ProteinCalculator() {
       {mode === 'dilution' && (
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 mb-4">
         <h2 className="text-xs font-bold text-primary uppercase tracking-wide mb-3">Dilution (C₁V₁ = C₂V₂)</h2>
-        <div className="grid grid-cols-3 gap-2 mb-3">
-          <div>
-            <label className="text-xs text-slate-400">C₁ initial (µM)</label>
-            <input type="number" value={dilC1} onChange={e => setDilC1(e.target.value)} placeholder="µM"
-              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
-          </div>
-          <div>
-            <label className="text-xs text-slate-400">C₂ target (µM)</label>
-            <input type="number" value={dilC2} onChange={e => setDilC2(e.target.value)} placeholder="µM"
-              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
-          </div>
-          <div>
-            <label className="text-xs text-slate-400">V₂ final (µL)</label>
-            <input type="number" value={dilV2} onChange={e => setDilV2(e.target.value)} placeholder="µL"
-              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
-          </div>
+
+        <div className="mb-3">
+          <label className="text-xs text-slate-400">V₂ final (µL) — shared by all components</label>
+          <input type="number" value={dilV2} onChange={e => setDilV2(e.target.value)} placeholder="µL"
+            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
         </div>
-        {(() => {
-          const c1 = parseFloat(dilC1) || 0
-          const c2 = parseFloat(dilC2) || 0
-          const v2 = parseFloat(dilV2) || 0
-          if (c1 > 0 && c2 > 0 && v2 > 0 && c1 >= c2) {
-            const v1 = (c2 * v2) / c1
-            const buffer = v2 - v1
-            return (
-              <div className="bg-slate-50 rounded-xl p-3">
-                <div className="grid grid-cols-2 gap-1 text-center">
-                  <div>
-                    <div className="text-xs text-slate-400">Stock (V₁)</div>
-                    <div className="text-sm font-semibold text-primary">{v1.toFixed(2)}</div>
-                    <div className="text-[10px] text-slate-400">µL</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-400">Buffer</div>
-                    <div className="text-sm font-semibold text-accent">{buffer.toFixed(2)}</div>
-                    <div className="text-[10px] text-slate-400">µL</div>
-                  </div>
+
+        <div className="space-y-2">
+          {dilRows.map((r, i) => (
+            <div key={r.id} className="border border-slate-200 rounded-xl p-2.5">
+              <div className="flex items-center gap-2 mb-1.5">
+                <input value={r.name} onChange={e => updateDilComp(r.id, { name: e.target.value })}
+                  placeholder={`Component ${i + 1}`}
+                  className="flex-1 px-2 py-1 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary-light" />
+                {dilRows.length > 1 && (
+                  <button onClick={() => setDilComps(cs => cs.filter(c => c.id !== r.id))}
+                    className="p-1 text-slate-300 hover:text-red-500" title="Remove component">
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[10px] text-slate-400">C₁ initial</label>
+                  <input type="number" value={r.c1} onChange={e => updateDilComp(r.id, { c1: e.target.value })} placeholder="C₁"
+                    className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-400">C₂ target</label>
+                  <input type="number" value={r.c2} onChange={e => updateDilComp(r.id, { c2: e.target.value })} placeholder="C₂"
+                    className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-400">Unit</label>
+                  <select value={r.unit} onChange={e => updateDilComp(r.id, { unit: e.target.value as DilUnit })}
+                    className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary-light">
+                    <option value="µM">µM</option>
+                    <option value="nM">nM</option>
+                    <option value="mg/mL">mg/mL</option>
+                  </select>
                 </div>
               </div>
-            )
-          }
-          if (c1 > 0 && c2 > 0 && c1 < c2) {
-            return <div className="bg-red-50 rounded-xl p-3 text-center"><p className="text-sm text-red-500">C₁ must be ≥ C₂</p></div>
-          }
-          return null
-        })()}
+              <div className="mt-1.5 text-[11px] text-right">
+                {r.c1 > 0 && r.c2 > 0 && r.c1 < r.c2
+                  ? <span className="text-red-500">C₁ must be ≥ C₂</span>
+                  : r.v1 > 0
+                  ? <span className="text-slate-400">V₁ = <span className="font-semibold text-primary">{r.v1.toFixed(2)}</span> µL</span>
+                  : null}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button onClick={() => setDilComps(cs => [...cs, newDilComp()])}
+          className="mt-2 flex items-center gap-1 text-xs text-primary font-medium hover:opacity-70">
+          <Plus size={14} /> Add component
+        </button>
+
+        {dilOk ? (
+          <div className="bg-slate-50 rounded-xl p-3 mt-3 space-y-1">
+            {dilRows.map((r, i) => (
+              <div key={r.id} className="flex items-center justify-between text-sm gap-2">
+                <span className="text-slate-500 truncate">{r.name.trim() || `Component ${i + 1}`}</span>
+                <span className="font-semibold text-primary whitespace-nowrap">{r.v1.toFixed(2)} µL</span>
+              </div>
+            ))}
+            <div className="flex items-center justify-between text-sm pt-1 border-t border-slate-200">
+              <span className="text-slate-500">Buffer</span>
+              <span className="font-semibold text-accent whitespace-nowrap">{dilBuffer.toFixed(2)} µL</span>
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-slate-400">
+              <span>Total</span>
+              <span>{dilV2Val.toFixed(2)} µL</span>
+            </div>
+          </div>
+        ) : dilV2Val > 0 && dilBuffer < 0 ? (
+          <div className="bg-red-50 rounded-xl p-3 mt-3 text-center">
+            <p className="text-sm text-red-500">
+              Stock volumes ({dilStockTotal.toFixed(2)} µL) exceed final volume ({dilV2Val.toFixed(2)} µL)
+            </p>
+          </div>
+        ) : null}
 
         {/* Dilution formula */}
         <div className="mt-3 text-xs text-slate-400 text-center">
-          V₁ = (C₂ × V₂) / C₁ &nbsp;·&nbsp; Buffer = V₂ − V₁
+          V₁ᵢ = (C₂ᵢ × V₂) / C₁ᵢ &nbsp;·&nbsp; Buffer = V₂ − ΣV₁ᵢ
         </div>
       </div>
       )}
