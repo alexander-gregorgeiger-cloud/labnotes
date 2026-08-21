@@ -29,6 +29,19 @@ interface DilComp {
 let dilCompSeq = 0
 const newDilComp = (): DilComp => ({ id: `dil-${++dilCompSeq}`, name: '', c1: '', c2: '', unit: 'µM' })
 
+// "." and "," are interchangeable decimal separators. Keep whichever one was typed
+// so the caret doesn't jump, drop anything that isn't a digit or a separator, and
+// allow only the first separator.
+const decimalInput = (s: string) => {
+  const cleaned = s.replace(/[^\d.,]/g, '')
+  const sep = cleaned.search(/[.,]/)
+  return sep === -1
+    ? cleaned
+    : cleaned.slice(0, sep + 1) + cleaned.slice(sep + 1).replace(/[.,]/g, '')
+}
+
+const parseNum = (s: string) => parseFloat(s.replace(',', '.')) || 0
+
 export default function ProteinCalculator() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -89,12 +102,13 @@ export default function ProteinCalculator() {
   const mwVal = (parseFloat(mw) || 0) * (mwUnit === 'kda' ? 1000 : 1)
   const volVal = parseFloat(vol) || 0
 
-  const dilV2Val = parseFloat(dilV2) || 0
+  const dilV2Val = parseNum(dilV2)
   const dilRows = dilComps.map(c => {
-    const c1 = parseFloat(c.c1) || 0
-    const c2 = parseFloat(c.c2) || 0
+    const c1 = parseNum(c.c1)
+    const c2 = parseNum(c.c2)
     const valid = c1 > 0 && c2 > 0 && c1 >= c2
-    return { ...c, c1, c2, valid, v1: valid && dilV2Val > 0 ? (c2 * dilV2Val) / c1 : 0 }
+    // c1/c2 stay as the raw strings the inputs are bound to; c1Val/c2Val are the numbers.
+    return { ...c, c1Val: c1, c2Val: c2, valid, v1: valid && dilV2Val > 0 ? (c2 * dilV2Val) / c1 : 0 }
   })
   const dilStockTotal = dilRows.reduce((s, r) => s + r.v1, 0)
   const dilBuffer = dilV2Val - dilStockTotal
@@ -230,7 +244,7 @@ export default function ProteinCalculator() {
       text += `Final volume V₂ = ${dilV2Val} µL\n\n`
       dilRows.forEach((r, i) => {
         const label = r.name.trim() || `Component ${i + 1}`
-        text += `${label}: ${r.c1} ${r.unit} → ${r.c2} ${r.unit}   V₁ = ${r.v1.toFixed(2)} µL\n`
+        text += `${label}: ${r.c1Val} ${r.unit} → ${r.c2Val} ${r.unit}   V₁ = ${r.v1.toFixed(2)} µL\n`
       })
       text += `\nBuffer = ${dilBuffer.toFixed(2)} µL\n`
       text += `Total  = ${dilV2Val.toFixed(2)} µL\n`
@@ -802,7 +816,8 @@ export default function ProteinCalculator() {
 
         <div className="mb-3">
           <label className="text-xs text-slate-400">V₂ final (µL) — shared by all components</label>
-          <input type="number" value={dilV2} onChange={e => setDilV2(e.target.value)} placeholder="µL"
+          <input type="text" inputMode="decimal" value={dilV2}
+            onChange={e => setDilV2(decimalInput(e.target.value))} placeholder="µL"
             className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
         </div>
 
@@ -823,12 +838,14 @@ export default function ProteinCalculator() {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="text-[10px] text-slate-400">C₁ initial</label>
-                  <input type="number" value={r.c1} onChange={e => updateDilComp(r.id, { c1: e.target.value })} placeholder="C₁"
+                  <input type="text" inputMode="decimal" value={r.c1}
+                    onChange={e => updateDilComp(r.id, { c1: decimalInput(e.target.value) })} placeholder="C₁"
                     className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
                 </div>
                 <div>
                   <label className="text-[10px] text-slate-400">C₂ target</label>
-                  <input type="number" value={r.c2} onChange={e => updateDilComp(r.id, { c2: e.target.value })} placeholder="C₂"
+                  <input type="text" inputMode="decimal" value={r.c2}
+                    onChange={e => updateDilComp(r.id, { c2: decimalInput(e.target.value) })} placeholder="C₂"
                     className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-primary-light" />
                 </div>
                 <div>
@@ -842,7 +859,7 @@ export default function ProteinCalculator() {
                 </div>
               </div>
               <div className="mt-1.5 text-[11px] text-right">
-                {r.c1 > 0 && r.c2 > 0 && r.c1 < r.c2
+                {r.c1Val > 0 && r.c2Val > 0 && r.c1Val < r.c2Val
                   ? <span className="text-red-500">C₁ must be ≥ C₂</span>
                   : r.v1 > 0
                   ? <span className="text-slate-400">V₁ = <span className="font-semibold text-primary">{r.v1.toFixed(2)}</span> µL</span>
