@@ -4,9 +4,24 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { doc, collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore'
 import { firestore } from '../firebase'
 import { useAuth } from '../AuthContext'
-import { ArrowLeft, Plus, Download, Trash2, Edit3, Check, X, Camera, Image } from 'lucide-react'
+import { ArrowLeft, Plus, Download, Trash2, Edit3, Check, X, Camera, Image, ListChecks, Lightbulb } from 'lucide-react'
 import { exportExperiment } from '../export'
-import type { Experiment, Idea } from '../db'
+import type { Experiment, Idea, ChecklistItem } from '../db'
+
+function newItemId() {
+  return Math.random().toString(36).slice(2, 10)
+}
+
+function parseChecklistLines(text: string, existing: ChecklistItem[] = []): ChecklistItem[] {
+  return text
+    .split('\n')
+    .map(line => line.replace(/^\s*[-*•]\s*/, '').trim())
+    .filter(Boolean)
+    .map(itemText => {
+      const match = existing.find(i => i.text === itemText)
+      return { id: match?.id ?? newItemId(), text: itemText, done: match?.done ?? false }
+    })
+}
 
 function resizeImage(file: File, maxWidth = 800): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -41,9 +56,13 @@ export default function ExperimentDetail() {
   const [experiment, setExperiment] = useState<Experiment | null>(null)
   const [ideas, setIdeas] = useState<Idea[]>([])
   const [ideaText, setIdeaText] = useState('')
+  const [composeMode, setComposeMode] = useState<'idea' | 'checklist'>('idea')
+  const [checklistTitle, setChecklistTitle] = useState('')
+  const [newItemText, setNewItemText] = useState<Record<string, string>>({})
   const [pendingImage, setPendingImage] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
+  const [editTitle, setEditTitle] = useState('')
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
@@ -80,6 +99,8 @@ export default function ExperimentDetail() {
           experimentId: id,
           content: data.content,
           imageData: data.imageData || undefined,
+          type: data.type === 'checklist' ? 'checklist' : undefined,
+          items: Array.isArray(data.items) ? (data.items as ChecklistItem[]) : undefined,
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         }
@@ -130,12 +151,19 @@ export default function ExperimentDetail() {
 
   async function addIdea(e: React.FormEvent) {
     e.preventDefault()
-    if ((!ideaText.trim() && !pendingImage) || !id || !user) return
+    if (!id || !user) return
+    const isChecklist = composeMode === 'checklist'
+    const items = isChecklist ? parseChecklistLines(ideaText) : []
+    if (isChecklist ? items.length === 0 && !checklistTitle.trim() : !ideaText.trim() && !pendingImage) return
     const now = Timestamp.now()
     const ideaData: Record<string, unknown> = {
-      content: ideaText.trim(),
+      content: isChecklist ? checklistTitle.trim() : ideaText.trim(),
       createdAt: now,
       updatedAt: now,
+    }
+    if (isChecklist) {
+      ideaData.type = 'checklist'
+      ideaData.items = items
     }
     if (pendingImage) {
       ideaData.imageData = pendingImage
@@ -143,7 +171,33 @@ export default function ExperimentDetail() {
     await addDoc(collection(firestore, 'users', user.uid, 'experiments', id, 'ideas'), ideaData)
     await updateDoc(doc(firestore, 'users', user.uid, 'experiments', id), { updatedAt: now })
     setIdeaText('')
+    setChecklistTitle('')
     setPendingImage(null)
+  }
+
+  async function updateIdea(ideaId: string, data: Record<string, unknown>) {
+    if (!user || !id) return
+    const now = Timestamp.now()
+    await updateDoc(doc(firestore, 'users', user.uid, 'experiments', id, 'ideas', ideaId), { ...data, updatedAt: now })
+    await updateDoc(doc(firestore, 'users', user.uid, 'experiments', id), { updatedAt: now })
+  }
+
+  async function toggleItem(idea: Idea, itemId: string) {
+    const items = (idea.items ?? []).map(i => (i.id === itemId ? { ...i, done: !i.done } : i))
+    await updateIdea(idea.id, { items })
+  }
+
+  async function deleteItem(idea: Idea, itemId: string) {
+    const items = (idea.items ?? []).filter(i => i.id !== itemId)
+    await updateIdea(idea.id, { items })
+  }
+
+  async function addItem(idea: Idea) {
+    const text = (newItemText[idea.id] ?? '').trim()
+    if (!text) return
+    const items = [...(idea.items ?? []), { id: newItemId(), text, done: false }]
+    setNewItemText(prev => ({ ...prev, [idea.id]: '' }))
+    await updateIdea(idea.id, { items })
   }
 
   async function deleteIdea(ideaId: string) {
@@ -152,21 +206,28 @@ export default function ExperimentDetail() {
     await updateDoc(doc(firestore, 'users', user.uid, 'experiments', id), { updatedAt: Timestamp.now() })
   }
 
-  async function saveEdit(ideaId: string) {
-    if (!editText.trim() || !user || !id) return
-    const now = Timestamp.now()
-    await updateDoc(doc(firestore, 'users', user.uid, 'experiments', id, 'ideas', ideaId), {
-      content: editText.trim(),
-      updatedAt: now,
-    })
-    await updateDoc(doc(firestore, 'users', user.uid, 'experiments', id), { updatedAt: now })
+  async function saveEdit(idea: Idea) {
+    if (idea.type === 'checklist') {
+      const items = parseChecklistLines(editText, idea.items ?? [])
+      if (items.length === 0 && !editTitle.trim()) return
+      await updateIdea(idea.id, { content: editTitle.trim(), items })
+    } else {
+      if (!editText.trim()) return
+      await updateIdea(idea.id, { content: editText.trim() })
+    }
     setEditingId(null)
     setEditText('')
+    setEditTitle('')
   }
 
   function startEdit(idea: Idea) {
     setEditingId(idea.id)
-    setEditText(idea.content)
+    if (idea.type === 'checklist') {
+      setEditTitle(idea.content)
+      setEditText((idea.items ?? []).map(i => i.text).join('\n'))
+    } else {
+      setEditText(idea.content)
+    }
   }
 
   async function handleExport() {
@@ -208,11 +269,35 @@ export default function ExperimentDetail() {
       {/* Add Idea Form */}
       <form onSubmit={addIdea} className="mb-6">
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden focus-within:ring-2 focus-within:ring-accent focus-within:border-transparent">
+          <div className="flex gap-1 px-3 pt-3">
+            {([['idea', 'Idea', Lightbulb], ['checklist', 'Checklist', ListChecks]] as const).map(([mode, label, Icon]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setComposeMode(mode)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  composeMode === mode ? 'bg-accent/10 text-accent' : 'text-slate-400 hover:bg-slate-50'
+                }`}
+              >
+                <Icon className="w-4 h-4" /> {label}
+              </button>
+            ))}
+          </div>
+
+          {composeMode === 'checklist' && (
+            <input
+              value={checklistTitle}
+              onChange={e => setChecklistTitle(e.target.value)}
+              placeholder="Checklist title (optional)"
+              className="w-full px-4 pt-3 text-base font-medium focus:outline-none"
+            />
+          )}
+
           <textarea
             ref={textareaRef}
             value={ideaText}
             onChange={e => setIdeaText(e.target.value)}
-            placeholder="Add an idea..."
+            placeholder={composeMode === 'checklist' ? 'One task per line...' : 'Add an idea...'}
             rows={2}
             className="w-full px-4 pt-3 pb-2 text-base resize-none focus:outline-none"
             onKeyDown={e => {
@@ -280,14 +365,14 @@ export default function ExperimentDetail() {
               />
             </div>
 
-            {(ideaText.trim() || pendingImage) && (
+            {(ideaText.trim() || checklistTitle.trim() || pendingImage) && (
               <button
                 type="submit"
                 disabled={uploading}
                 className="flex items-center gap-1.5 bg-accent text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-accent-dark active:scale-95 transition-all disabled:opacity-50"
               >
                 <Plus className="w-4 h-4" />
-                {uploading ? 'Processing...' : 'Add Idea'}
+                {uploading ? 'Processing...' : composeMode === 'checklist' ? 'Add Checklist' : 'Add Idea'}
               </button>
             )}
           </div>
@@ -305,16 +390,24 @@ export default function ExperimentDetail() {
             <div key={idea.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
               {editingId === idea.id ? (
                 <div>
+                  {idea.type === 'checklist' && (
+                    <input
+                      value={editTitle}
+                      onChange={e => setEditTitle(e.target.value)}
+                      placeholder="Checklist title (optional)"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-accent text-base font-medium"
+                    />
+                  )}
                   <textarea
                     value={editText}
                     onChange={e => setEditText(e.target.value)}
                     autoFocus
-                    rows={3}
+                    rows={idea.type === 'checklist' ? Math.max(3, (idea.items?.length ?? 0) + 1) : 3}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-accent text-base resize-none"
                   />
                   <div className="flex gap-2">
                     <button
-                      onClick={() => saveEdit(idea.id)}
+                      onClick={() => saveEdit(idea)}
                       className="flex items-center gap-1 px-3 py-1.5 bg-accent text-white rounded-lg text-sm hover:bg-accent-dark transition-colors"
                     >
                       <Check className="w-3.5 h-3.5" /> Save
@@ -347,8 +440,70 @@ export default function ExperimentDetail() {
                       </div>
                     </div>
                   )}
-                  {idea.content && (
-                    <p className="text-slate-800 whitespace-pre-wrap">{idea.content}</p>
+                  {idea.type === 'checklist' ? (
+                    <div>
+                      <div className="flex items-baseline justify-between gap-2 mb-2">
+                        <h3 className="font-semibold text-slate-900">{idea.content || 'Checklist'}</h3>
+                        <span className="text-xs text-slate-400 whitespace-nowrap">
+                          {(idea.items ?? []).filter(i => i.done).length}/{(idea.items ?? []).length} done
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        {(idea.items ?? []).map(item => (
+                          <div key={item.id} className="group flex items-start gap-2">
+                            <button
+                              onClick={() => toggleItem(idea, item.id)}
+                              className={`mt-0.5 w-5 h-5 shrink-0 rounded-md border flex items-center justify-center transition-colors ${
+                                item.done
+                                  ? 'bg-accent border-accent text-white'
+                                  : 'border-slate-300 text-transparent hover:border-accent'
+                              }`}
+                              aria-label={item.done ? 'Mark as not done' : 'Mark as done'}
+                            >
+                              {item.done && <Check className="w-3.5 h-3.5" />}
+                            </button>
+                            <span
+                              onClick={() => toggleItem(idea, item.id)}
+                              className={`flex-1 cursor-pointer ${item.done ? 'line-through text-slate-400' : 'text-slate-800'}`}
+                            >
+                              {item.text}
+                            </span>
+                            <button
+                              onClick={() => deleteItem(idea, item.id)}
+                              className="p-1 text-slate-200 hover:text-red-500 transition-colors"
+                              aria-label="Remove task"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 mt-2 pl-7">
+                        <input
+                          value={newItemText[idea.id] ?? ''}
+                          onChange={e => setNewItemText(prev => ({ ...prev, [idea.id]: e.target.value }))}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              addItem(idea)
+                            }
+                          }}
+                          placeholder="Add task..."
+                          className="flex-1 text-sm py-1 border-b border-transparent focus:border-accent focus:outline-none placeholder:text-slate-300"
+                        />
+                        {(newItemText[idea.id] ?? '').trim() && (
+                          <button
+                            onClick={() => addItem(idea)}
+                            className="p-1 text-accent hover:bg-orange-50 rounded-lg transition-colors"
+                            aria-label="Add task"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    idea.content && <p className="text-slate-800 whitespace-pre-wrap">{idea.content}</p>
                   )}
                   <div className="flex items-center justify-between mt-3">
                     <span className="text-xs text-slate-400">

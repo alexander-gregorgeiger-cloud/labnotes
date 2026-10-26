@@ -498,10 +498,28 @@ export async function exportExperiment(experiment: Experiment, ideas: Idea[]) {
     if (idea.content) {
       children.push(
         new Paragraph({
-          children: [new TextRun({ text: idea.content, size: 22 })],
+          children: [new TextRun({ text: idea.content, size: 22, bold: idea.type === 'checklist' })],
           spacing: { after: 100 },
         })
       )
+    }
+
+    if (idea.type === 'checklist') {
+      for (const item of idea.items ?? []) {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `${item.done ? '☒' : '☐'}  ${item.text}`,
+                size: 22,
+                strike: item.done,
+                color: item.done ? '94a3b8' : '000000',
+              }),
+            ],
+            spacing: { after: 40 },
+          })
+        )
+      }
     }
 
     children.push(

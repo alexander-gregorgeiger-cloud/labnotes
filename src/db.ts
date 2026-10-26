@@ -44,11 +44,20 @@ export interface Experiment {
   updatedAt: Date
 }
 
+export interface ChecklistItem {
+  id: string
+  text: string
+  done: boolean
+}
+
 export interface Idea {
   id: string
   experimentId: string
   content: string
   imageData?: string
+  // Absent on plain ideas; 'checklist' ideas carry `items` instead of free text.
+  type?: 'checklist'
+  items?: ChecklistItem[]
   createdAt: Date
   updatedAt: Date
 }
