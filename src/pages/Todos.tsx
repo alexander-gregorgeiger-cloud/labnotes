@@ -89,7 +89,7 @@ export default function Todos() {
   useEffect(() => {
     if (!user) return
     const base = ['users', user.uid] as const
-    const unsubLists = onSnapshot(query(collection(firestore, ...base, 'todoLists'), orderBy('order')), snap => {
+    const unsubLists = onSnapshot(query(collection(firestore, ...base, 'todoLists'), orderBy('createdAt', 'desc')), snap => {
       setLists(snap.docs.map(d => {
         const data = d.data()
         return {
