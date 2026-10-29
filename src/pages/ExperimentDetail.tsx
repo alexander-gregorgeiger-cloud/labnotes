@@ -100,6 +100,7 @@ export default function ExperimentDetail() {
           content: data.content,
           imageData: data.imageData || undefined,
           type: data.type === 'checklist' ? 'checklist' : undefined,
+          migratedTo: data.migratedTo || undefined,
           items: Array.isArray(data.items) ? (data.items as ChecklistItem[]) : undefined,
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
@@ -440,7 +441,18 @@ export default function ExperimentDetail() {
                       </div>
                     </div>
                   )}
-                  {idea.type === 'checklist' ? (
+                  {idea.type === 'checklist' && idea.migratedTo ? (
+                    <button
+                      onClick={() => navigate('/todos')}
+                      className="flex items-center gap-2 text-left text-primary hover:text-primary-dark"
+                    >
+                      <ListChecks className="w-4 h-4 shrink-0" />
+                      <span>
+                        <span className="font-semibold">{idea.content || 'Checklist'}</span>
+                        <span className="text-slate-400"> moved to To-Do &rarr;</span>
+                      </span>
+                    </button>
+                  ) : idea.type === 'checklist' ? (
                     <div>
                       <div className="flex items-baseline justify-between gap-2 mb-2">
                         <h3 className="font-semibold text-slate-900">{idea.content || 'Checklist'}</h3>

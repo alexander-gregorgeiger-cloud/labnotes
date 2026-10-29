@@ -58,6 +58,39 @@ export interface Idea {
   // Absent on plain ideas; 'checklist' ideas carry `items` instead of free text.
   type?: 'checklist'
   items?: ChecklistItem[]
+  // Id of the To-Do list this checklist was imported into.
+  migratedTo?: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type TodoPriority = 'none' | 'low' | 'medium' | 'high'
+
+export interface TodoComment {
+  id: string
+  text: string
+  createdAt: number
+}
+
+export interface TodoList {
+  id: string
+  name: string
+  order: number
+  source?: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface Todo {
+  id: string
+  listId: string
+  text: string
+  done: boolean
+  priority: TodoPriority
+  // YYYY-MM-DD, empty string when unset.
+  dueDate: string
+  order: number
+  comments: TodoComment[]
   createdAt: Date
   updatedAt: Date
 }

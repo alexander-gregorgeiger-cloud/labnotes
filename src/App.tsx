@@ -11,6 +11,7 @@ import ExperimentDetail from './pages/ExperimentDetail'
 import ConjugationCalculator from './pages/ConjugationCalculator'
 import ProteinCalculator from './pages/ProteinCalculator'
 import MemoList from './pages/MemoList'
+import Todos from './pages/Todos'
 import PanelPlanner from './pages/PanelPlanner'
 import EpsilonLibrary from './pages/EpsilonLibrary'
 import ConjugationRecordList from './pages/ConjugationRecordList'
@@ -70,6 +71,7 @@ export default function App() {
       <Route path="/conjugation" element={<ConjugationCalculator />} />
       <Route path="/protein" element={<ProteinCalculator />} />
       <Route path="/memos" element={<MemoList />} />
+      <Route path="/todos" element={<Todos />} />
       <Route path="/panel-planner" element={<PanelPlanner />} />
       <Route path="/epsilon-library" element={<EpsilonLibrary />} />
       <Route path="/thiolink" element={<ThioLinkAnalysis />} />
